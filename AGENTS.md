@@ -167,3 +167,14 @@ Every time a CI build error or device runtime bug occurs, **you MUST add its sym
   2. Qualcomm's `walt.ko` (`kernel/sched/walt/sysctl.c`, `sched_ravg_window_handler`) explicitly checks `if (write && HZ != 250) return -EPERM;` and calibrates window ticks `{2, 3, 4, 5, 8}` and hardware bus monitors (`bwmon-ddr`/`bwmon-llcc` `sample_ms = 4`) strictly for `HZ = 250`.
   3. High-resolution timers (`CONFIG_HIGH_RES_TIMERS=y`, `CONFIG_SCHED_HRTICK=y`, `CONFIG_NO_HZ=y`) already drive scheduling preemption and VSync off the `19.2 MHz` (`52 ns`) ARM64 `arch_timer`.
 - **Prevention**: Always keep `CONFIG_HZ_250=y` (`CONFIG_HZ=250`). To align Qualcomm WALT load tracking with the 120Hz LTPO display ($8.33\text{ ms}$ frame time) instead of the boot default 60Hz (`16 ms` = `4` ticks), set `/proc/sys/walt/sched_ravg_window_nr_ticks = 2` (`8 ms` window) at runtime in `scripts/houji-notification-helper.sh`.
+
+---
+
+## Rule 18: Invalidate Bazel Disk Cache When Repository Name (`github.workspace`) Changes
+- **Symptom**: After renaming the GitHub repository (e.g. from `GKI_KernelSU_SUSFS` to `HNHouji-Kernel`), `//common:kernel_aarch64` fails at the end of compilation with:
+  ```
+  .../bazel-out/k8-fastbuild/bin/build/kernel/hermetic-tools/tar: 3: /home/runner/work/GKI_KernelSU_SUSFS/GKI_KernelSU_SUSFS/kernel/prebuilts/build-tools/linux-x86/bin/toybox: not found
+  make[3]: *** [kernel/kheaders_data.tar.xz] Error 127
+  ```
+- **Root Cause**: Kleaf's `@//build/kernel:hermetic-tools/*` wrapper scripts bake the absolute runner workspace path (`/home/runner/work/<repo>/<repo>/...`) into cached artifacts inside `/home/runner/.cache/bazel`. Restoring a `bazel-cache-*` release archive generated under the old repository name causes a Bazel disk-cache hit on `hermetic-tools/tar` pointing to the non-existent old workspace path.
+- **Prevention**: Store `${{ github.workspace }}` in `/home/runner/.cache/bazel/.workspace_path` and automatically clear `/home/runner/.cache/bazel/*` in `.github/actions/build-kernel/action.yml` whenever `.workspace_path` is missing or differs from the current `${{ github.workspace }}`.

@@ -77,6 +77,14 @@ runs:
           build/build.sh -j"$(nproc)"
         else
           sed -i '/name = "kernel_aarch64",/a\    check_defconfig = "disabled",' common/BUILD.bazel
+          if [ -d "/home/runner/.cache/bazel" ]; then
+            if [ ! -f "/home/runner/.cache/bazel/.workspace_path" ] || [ "$(cat /home/runner/.cache/bazel/.workspace_path 2>/dev/null)" != "${{ github.workspace }}" ]; then
+              echo "[-] Workspace path changed; clearing stale Bazel disk cache to prevent hermetic-tools path mismatch..."
+              rm -rf /home/runner/.cache/bazel/*
+            fi
+          fi
+          mkdir -p /home/runner/.cache/bazel
+          echo "${{ github.workspace }}" > /home/runner/.cache/bazel/.workspace_path
           PAGE_SIZE_FLAGS=()
           if [ "$PAGE_SIZE" = "16k" ]; then
             PAGE_SIZE_FLAGS+=(--page_size=16k)
