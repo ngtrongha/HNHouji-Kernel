@@ -25,10 +25,16 @@ esac
 device_config put activity_manager max_phantom_processes 2147483647 >/dev/null 2>&1 || true
 
 # ==============================================================================
-# 2. Qualcomm SM8650 (pineapple 2_3_2_1) CPU & Deep Sleep Tuning
+# 2. Qualcomm SM8650 (pineapple 2_3_2_1) CPU, WALT 120Hz & Deep Sleep Tuning
 # ==============================================================================
 # Prevent minor RT tasks from pinning Cortex-X4 at max freq (Qualcomm SM8650 reference)
 sysctl -w kernel.sched_util_clamp_min_rt_default=0 >/dev/null 2>&1 || true
+
+# Align Qualcomm WALT load tracking window to 8ms (2 ticks @ 250Hz) to match 120Hz (8.33ms) VSync
+# (Default at boot is 4 ticks = 16ms = 60Hz; valid values in walt.ko sysctl.c: 2, 3, 4, 5, 8)
+if [ -f /proc/sys/walt/sched_ravg_window_nr_ticks ]; then
+  echo 2 > /proc/sys/walt/sched_ravg_window_nr_ticks 2>/dev/null || true
+fi
 
 # Verify deep sleep mode is s2idle on SM8650 and set freeze timeout to 2s
 if [ -f /sys/power/mem_sleep ]; then

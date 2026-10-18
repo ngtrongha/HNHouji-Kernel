@@ -158,3 +158,12 @@ Every time a CI build error or device runtime bug occurs, **you MUST add its sym
   3. Categorize changes (CI/workflow, Telegram, root managers/pins, kernel source, detection evasion) and evaluate potential risks or conflicts with Xiaomi 14 (`houji`) hardware shields (Rules 1–15).
   4. Present a detailed breakdown report to the user and wait for explicit confirmation/decision before taking any merge action.
 
+---
+
+## Rule 17: Never Change `CONFIG_HZ=250` on GKI 6.1; Tune WALT Window (`sched_ravg_window_nr_ticks`) for 120Hz Instead
+- **Symptom**: Changing `CONFIG_HZ=250` to `300` or `1000` in `gki_defconfig` passes `kmi_check.py` (since `HZ` is a preprocessor macro not encoded in symbol CRCs), but causes premature display/GPU fence timeouts, watchdog resets, and rejected WALT scheduler sysctl writes on Xiaomi 14 (`houji`).
+- **Root Cause**:
+  1. In `include/linux/jiffies.h`, `msecs_to_jiffies(const unsigned int m)` is declared `static __always_inline` with `__builtin_constant_p(m)`, baking constant `250 Hz` (`1 jiffy = 4 ms`) jiffy counts into Xiaomi's prebuilt `.ko` modules (`msm_drm.ko`, `msm_kgsl.ko`, `ufshcd-qcom.ko`, `qca_cld3_peach_v2.ko`). Running `vmlinux` at `1000 Hz` advances `jiffies` 4x faster, expiring module timeouts in 1/4th of the intended time.
+  2. Qualcomm's `walt.ko` (`kernel/sched/walt/sysctl.c`, `sched_ravg_window_handler`) explicitly checks `if (write && HZ != 250) return -EPERM;` and calibrates window ticks `{2, 3, 4, 5, 8}` and hardware bus monitors (`bwmon-ddr`/`bwmon-llcc` `sample_ms = 4`) strictly for `HZ = 250`.
+  3. High-resolution timers (`CONFIG_HIGH_RES_TIMERS=y`, `CONFIG_SCHED_HRTICK=y`, `CONFIG_NO_HZ=y`) already drive scheduling preemption and VSync off the `19.2 MHz` (`52 ns`) ARM64 `arch_timer`.
+- **Prevention**: Always keep `CONFIG_HZ_250=y` (`CONFIG_HZ=250`). To align Qualcomm WALT load tracking with the 120Hz LTPO display ($8.33\text{ ms}$ frame time) instead of the boot default 60Hz (`16 ms` = `4` ticks), set `/proc/sys/walt/sched_ravg_window_nr_ticks = 2` (`8 ms` window) at runtime in `scripts/houji-notification-helper.sh`.
