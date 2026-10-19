@@ -93,7 +93,7 @@ EOF
   # 4. Wire Xiaomi 14 notification keeper if 6.1
   HELPER_SRC="$SCRIPT_DIR/houji-notification-helper.sh"
   if [ "$KERNEL_VERSION" = "6.1" ] && [ -f "$HELPER_SRC" ]; then
-    cp -f "$HELPER_SRC" "$AK3_DIR/houji-notification-helper.sh"
+    tr -d '\r' < "$HELPER_SRC" > "$AK3_DIR/houji-notification-helper.sh"
     chmod +x "$AK3_DIR/houji-notification-helper.sh" || true
     cat << 'EOF' >> "$AK3_DIR/anykernel.sh"
 
@@ -101,7 +101,7 @@ EOF
 if [ -f "$home/houji-notification-helper.sh" ]; then
   ui_print "  -> Installing Xiaomi 14 performance & notification helper..."
   mkdir -p /data/adb/service.d
-  cp -f "$home/houji-notification-helper.sh" /data/adb/service.d/houji-notification-helper.sh
+  tr -d '\r' < "$home/houji-notification-helper.sh" > /data/adb/service.d/houji-notification-helper.sh
   chmod 755 /data/adb/service.d/houji-notification-helper.sh
   ui_print "  -> Performance & notification helper installed successfully."
 fi

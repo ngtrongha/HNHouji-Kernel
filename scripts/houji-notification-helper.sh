@@ -2,10 +2,15 @@
 # Xiaomi 14 (houji - SM8650/pineapple) Stability, Notification & Performance Helper
 # Place in /data/adb/service.d/houji-notification-helper.sh or run via KSU boot-completed.sh
 
+export PATH="/data/adb/ksu/bin:/data/adb/ap/bin:/data/adb/magisk:/system/bin:/vendor/bin:$PATH"
+
 # Wait for Android boot completion
 while [ "$(getprop sys.boot_completed)" != "1" ]; do
   sleep 2
 done
+
+# Allow vendor post_boot scripts to finish initial zram0 setup first
+sleep 3
 
 # ==============================================================================
 # 1. HyperOS Notification & Background Retention Safeguards
@@ -44,8 +49,39 @@ if [ -f /proc/sys/kernel/printk ]; then
 fi
 
 # ==============================================================================
-# 3. Virtual Memory & ZRAM Tuning (Optimized for LPDDR5X + ZRAM)
+# 3. Virtual Memory & 1:1 ZRAM Sizing (8GB RAM -> 8GB ZRAM, 12GB -> 12GB, 16GB -> 16GB)
 # ==============================================================================
+# Unlock HyperOS 4GB ZRAM cap (/vendor/etc/fstab.qcom) and match ZRAM 1:1 with physical RAM
+ZRAM_DEV="/dev/block/zram0"
+[ ! -b "$ZRAM_DEV" ] && [ -b "/dev/zram0" ] && ZRAM_DEV="/dev/zram0"
+if [ -b "$ZRAM_DEV" ] && [ -f /sys/block/zram0/disksize ] && [ -f /sys/block/zram0/reset ]; then
+  MEM_TOTAL_KB=$(sed -n 's/^MemTotal:[[:space:]]*\([0-9]*\).*/\1/p' /proc/meminfo 2>/dev/null)
+  if [ -n "$MEM_TOTAL_KB" ]; then
+    if [ "$MEM_TOTAL_KB" -le 8388608 ]; then
+      TARGET_ZRAM_BYTES="8589934592"   # 8 GB
+    elif [ "$MEM_TOTAL_KB" -le 12582912 ]; then
+      TARGET_ZRAM_BYTES="12884901888"  # 12 GB
+    elif [ "$MEM_TOTAL_KB" -le 16777216 ]; then
+      TARGET_ZRAM_BYTES="17179869184"  # 16 GB
+    else
+      TARGET_ZRAM_BYTES="25769803776"  # 24 GB
+    fi
+
+    CUR_ZRAM_BYTES=$(cat /sys/block/zram0/disksize 2>/dev/null)
+    if [ "$CUR_ZRAM_BYTES" != "$TARGET_ZRAM_BYTES" ]; then
+      CUR_ALG=$(sed -n 's/.*\[\([^]]*\)\].*/\1/p' /sys/block/zram0/comp_algorithm 2>/dev/null)
+      swapoff "$ZRAM_DEV" >/dev/null 2>&1 || /system/bin/swapoff "$ZRAM_DEV" >/dev/null 2>&1 || true
+      echo 1 > /sys/block/zram0/reset 2>/dev/null || true
+      if [ -n "$CUR_ALG" ] && [ -f /sys/block/zram0/comp_algorithm ]; then
+        echo "$CUR_ALG" > /sys/block/zram0/comp_algorithm 2>/dev/null || true
+      fi
+      echo "$TARGET_ZRAM_BYTES" > /sys/block/zram0/disksize 2>/dev/null || true
+      mkswap "$ZRAM_DEV" >/dev/null 2>&1 || /system/bin/mkswap "$ZRAM_DEV" >/dev/null 2>&1 || true
+      swapon "$ZRAM_DEV" -p 32758 >/dev/null 2>&1 || swapon "$ZRAM_DEV" >/dev/null 2>&1 || /system/bin/swapon "$ZRAM_DEV" >/dev/null 2>&1 || true
+    fi
+  fi
+fi
+
 # Disable swap readahead (ZRAM is in-memory; cluster reads cause unnecessary CPU uncompression)
 sysctl -w vm.page-cluster=0 >/dev/null 2>&1 || true
 
