@@ -9,7 +9,7 @@ Hardened, hardware-safe Android Generic Kernel Image (GKI 2.0) built on **Google
 [![Kernel Base](https://img.shields.io/badge/Google%20ACK-6.1%20LTS-brightgreen.svg)](https://android.googlesource.com/kernel/common/+/refs/heads/android14-6.1)
 [![KernelSU-Next](https://img.shields.io/badge/Root-KernelSU--Next-orange.svg)](https://github.com/KernelSU-Next/KernelSU-Next)
 [![SUSFS](https://img.shields.io/badge/Hide-SUSFS%20v2.3.0-purple.svg)](https://gitlab.com/simonpunk/susfs4ksu)
-[![Device Verified](https://img.shields.io/badge/Xiaomi%2014-Tested%20%26%20Verified%20(r8)-success.svg)](https://github.com/ngtrongha/HNHouji-Kernel/releases/tag/r8)
+[![Device Verified](https://img.shields.io/badge/Xiaomi%2014-Tested%20%26%20Verified%20(r8)-success.svg)](https://github.com/ngtrongha/GKI_KernelSU_SUSFS/releases/tag/r8)
 
 </div>
 
@@ -61,7 +61,7 @@ Standard upstream GKI kernels often suffer from black screens, screen flickering
 ## Installation Guide
 
 ### Recommended: Kernel Flasher (Rooted)
-1. Download the latest `AnyKernel3.zip` (e.g., `6.1.177-android14-lts-KernelSU-Next-AnyKernel3.zip`) from [Releases](https://github.com/ngtrongha/HNHouji-Kernel/releases).
+1. Download the latest `AnyKernel3.zip` (e.g., `6.1.177-android14-lts-KernelSU-Next-AnyKernel3.zip`) from [Releases](https://github.com/ngtrongha/GKI_KernelSU_SUSFS/releases).
 2. Open **[Kernel Flasher](docs/kernelflasher.md)** on your device.
 3. Backup your existing `boot` partition (or have a stock `boot.img` handy).
 4. Select the downloaded AnyKernel3 zip and flash.
@@ -84,7 +84,7 @@ For step-by-step guides, see:
 
 - **Hardware**: Xiaomi 14 (`houji`, Snapdragon 8 Gen 3 / SM8650 `pineapple`).
 - **Firmware Tested**: HyperOS `OS3.0.307.0.WNCCNXM` (patch level 2026-08-01).
-- **Verified Working Milestone**: [Release 8 (r8)](https://github.com/ngtrongha/HNHouji-Kernel/releases/tag/r8) — 0% black screen, 0% LTPO flicker, clean F2FS mount.
+- **Verified Working Milestone**: [Release 8 (r8)](https://github.com/ngtrongha/GKI_KernelSU_SUSFS/releases/tag/r8) — 0% black screen, 0% LTPO flicker, clean F2FS mount.
 - **Default Pipeline**: Google ACK 6.1 LTS branch (`android14-6.1`) with verified DRM/SPMI pin.
 
 ---

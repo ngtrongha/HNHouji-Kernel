@@ -2,7 +2,7 @@ name: Setup pinned root implementation
 description: Clone exactly one supported root implementation at a verified commit
 inputs:
   flavor:
-    description: 'kernelsu, next, bakasu, sukisu-ultra, or kowsu'
+    description: 'kernelsu, next, resukisu, sukisu-ultra, or kowsu'
     required: true
   commit:
     description: 'Full immutable commit SHA'
@@ -30,10 +30,10 @@ runs:
             directory="KernelSU-Next"
             manager="KernelSU Next Manager"
             ;;
-          bakasu)
-            repo="https://github.com/Baka-SU/BakaSU.git"
-            directory="BakaSU"
-            manager="BakaSU Manager"
+          resukisu)
+            repo="https://github.com/ReSukiSU/ReSukiSU.git"
+            directory="ReSukiSU"
+            manager="ReSukiSU Manager"
             ;;
           sukisu-ultra)
             repo="https://github.com/SukiSU-Ultra/SukiSU-Ultra.git"
@@ -56,7 +56,7 @@ runs:
           exit 2
         fi
 
-        for candidate in KernelSU KernelSU-Next BakaSU SukiSU-Ultra KowSU; do
+        for candidate in KernelSU KernelSU-Next ReSukiSU SukiSU-Ultra KowSU; do
           if [ "$candidate" != "$directory" ] && [ -e "$candidate" ]; then
             echo "Refusing mixed root implementations: found $candidate." >&2
             exit 1
@@ -131,55 +131,39 @@ runs:
           fi
         done
 
-    - name: Disable multi-manager for BakaSU
-      if: inputs.flavor == 'bakasu'
+    - name: Disable multi-manager for ReSukiSU
+      if: inputs.flavor == 'resukisu'
       uses: ./.github/actions/set-kernel-config
       with:
         config_list: |
           CONFIG_KSU_MULTI_MANAGER_SUPPORT=n
           CONFIG_KSU_TOOLKIT_SUPPORT=y
 
-    - name: Soften BakaSU Kbuild submodule check for bazel builds
-      if: inputs.flavor == 'bakasu'
+    - name: Soften ReSukiSU Kbuild submodule check for bazel builds
+      if: inputs.flavor == 'resukisu'
       shell: bash
       working-directory: ${{ github.workspace }}/kernel
       run: |
         # Fallback: demote the git submodule check from error to warning.
-        # Modify the Kbuild in the BakaSU checkout so the change propagates
+        # Modify the Kbuild in the ReSukiSU checkout so the change propagates
         # through the symlink into bazel sandbox.
-        for d in BakaSU/kernel; do
+        for d in ReSukiSU/kernel; do
           if [ -f "$d/Kbuild" ] && grep -q 'You should use \$(REPO_NAME) as a git submodule instead of copying code directly' "$d/Kbuild"; then
             sed -i 's/\$(error You should use \$(REPO_NAME) as a git submodule instead of copying code directly)/\$(warning You should use \$(REPO_NAME) as a git submodule instead of copying code directly)/' "$d/Kbuild"
-            echo "Softened BakaSU submodule check in $d/Kbuild"
+            echo "Softened ReSukiSU submodule check in $d/Kbuild"
+          fi
+          if [ -f "$d/tools/susfs_compat.mk" ] && grep -q 'error Please wait susfs update' "$d/tools/susfs_compat.mk"; then
+            sed -i 's/\$(error Please wait susfs update\.)/\$(warning Please wait susfs update\.)/' "$d/tools/susfs_compat.mk"
+            echo "Softened ReSukiSU susfs update guard in $d/tools/susfs_compat.mk"
           fi
         done
 
-    - name: Soften BakaSU susfs_compat gate for susfs-inline builds
-      if: inputs.flavor == 'bakasu'
-      shell: bash
-      working-directory: ${{ github.workspace }}/kernel
-      run: |
-        # BakaSU's kernel/tools/susfs_compat.mk ends with an UNCONDITIONAL
-        # $(error "Please wait susfs update.") that fires on every
-        # CONFIG_KSU_SUSFS=y build (run 38221374132: the 6.1 BakaSU leg).
-        # The file's real work - the grep-based KSU_COMPAT_HAS_* defines
-        # above the gate - adapts the code to both old and new susfs
-        # layouts, so the hard stop is overcautious for our builds. Strip
-        # the tail (both $(info) lines and the $(error)), keep the shims.
-        F="BakaSU/kernel/tools/susfs_compat.mk"
-        if [ -f "$F" ] && grep -q 'Please wait susfs update' "$F"; then
-          sed -i '/susfs has NOT update with latest KernelSU source/,$d' "$F"
-          echo "Stripped susfs_compat hard stop from $F"
-        else
-          echo "No susfs_compat gate present; nothing to do"
-        fi
-
-    - name: KernelSU Performance Sync (AOSP signature & LKM bypass)
+    - name: KernelSU-Next v3.4.1 Performance Sync (AOSP signature & LKM bypass)
       shell: bash
       working-directory: ${{ github.workspace }}/kernel
       run: |
         set -euo pipefail
-        echo "[+] Syncing KernelSU performance optimizations..."
+        echo "[+] Syncing KernelSU-Next v3.4.1 performance optimizations..."
 
         # Align APK signature block parsing with AOSP v2/v3 and drop legacy v1 verification
         find . -maxdepth 4 -type f -name "apk_sign.c" 2>/dev/null | while read -r apk_file; do
@@ -194,7 +178,7 @@ runs:
 
         # Eliminate redundant security checks in boot image LKM injection path
         for hook_file in KernelSU-Next/kernel/runtime/ksud_integration.c KernelSU-Next/kernel/core/init.c \
-                         BakaSU/kernel/core_hook.c ReSukiSU/kernel/core_hook.c KernelSU/kernel/core_hook.c; do
+                         ReSukiSU/kernel/core_hook.c KernelSU/kernel/core_hook.c; do
           if [ -f "$hook_file" ]; then
             echo "[-] Optimizing LKM boot injection path in $hook_file"
             sed -i 's/bool check_lkm_security = true;/bool check_lkm_security = false;/' "$hook_file" 2>/dev/null || true
