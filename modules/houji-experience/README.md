@@ -1,4 +1,4 @@
-# HNHouji Experience 0.1.3-preview
+# HNHouji Experience 0.2.0-preview
 
 Module KernelSU độc lập cho Xiaomi 14 **houji**, arm64, GKI 6.1 và user 0.
 WebUI mở trong Manager; CLI là phương án dự phòng. Không cần metamodule,
@@ -125,8 +125,10 @@ Proxy riêng có thể chọn không xác thực, nhưng nên có token nếu pu
   Endpoint phải hỗ trợ các trường này; nếu nhà cung cấp dùng giao thức khác,
   dùng proxy chuyển đổi. Responses gửi `input`, `instructions`,
   `max_output_tokens`, `store:false`.
-- Mặc định 512 output token, timeout 30 giây; một yêu cầu/lần, không retry.
-- **Lưu cấu hình không gọi mạng.** Chỉ bấm Kiểm tra kết nối/Phân tích mới gọi.
+- Cấu hình mới mặc định 1024 output token, timeout 30 giây; giữ nguyên giới hạn
+  bạn đã lưu (kể cả 512). Một yêu cầu/lần, không retry.
+- **Lưu cấu hình API không gọi mạng.** Gọi khi bấm Kiểm tra kết nối/Phân tích,
+  hoặc theo lịch hằng ngày bạn bật riêng trong **Thói quen**.
   Kiểm tra kết nối không gửi telemetry. API có thể phát sinh phí.
 - Để trống khóa để giữ khóa cũ **chỉ khi endpoint/auth không đổi**. Đổi endpoint
   phải nhập lại khóa, tránh tự chuyển credential sang host khác.
@@ -138,8 +140,52 @@ Proxy riêng có thể chọn không xác thực, nhưng nên có token nếu pu
   Câu hỏi do người dùng nhập cũng được gửi: tránh nhập dữ liệu không muốn chia sẻ.
 - Không tải lịch sử hội thoại. Kết quả AI là văn bản, không được chạy như lệnh
   hoặc tự áp dụng. Khi API lỗi, hiện báo cáo cơ bản cùng mã lỗi.
-- Không ghi nội dung hỏi/đáp vào log. Metadata chỉ có trạng thái và thời điểm;
-  token usage/thời gian phản hồi trả về phiên UI hiện tại, không ước lượng tiền.
+- Không ghi nội dung hỏi/đáp vào log. Phân tích hằng ngày gần nhất được lưu riêng
+  trên máy để bạn xem lại, gồm token usage và bảng đối chiếu app-ID. Không ước lượng tiền.
+- Phản hồi bị cắt (`length`/`incomplete`) không được dùng làm lời khuyên; hiển thị
+  báo cáo cục bộ và trạng thái kết thúc/model thực. OpenRouter nhận
+  `reasoning.exclude:true` để ẩn phần reasoning trả về, **không giảm ngân sách
+  reasoning đã tính phí**. PSI là thời gian chờ bộ nhớ, không phải điện năng;
+  loadavg không phải phần trăm CPU. Không gửi lại tự động khi hết token.
+  Endpoint cần trả `finish_reason:"stop"` (Chat) hoặc `status:"completed"`
+  (Responses); thiếu trạng thái kết thúc cũng dùng báo cáo cục bộ.
+
+## Học thói quen và phân tích hằng ngày (0.2.0)
+
+- **Thói quen** có công tắc ghi nhận, tự chọn profile, lịch AI, giờ địa phương,
+  múi giờ và chỉ gửi lúc sạc. Ghi nhận/tự chọn cục bộ bật mặc định; lịch AI tắt
+  mặc định. Có nút xem payload, phân tích thủ công, xóa lịch sử và sang đặt quy tắc.
+- Lịch sử riêng `learning.json`: tối đa 7 ngày, 32 ứng dụng/ngày; ứng dụng
+  foreground, số phiên và số giây theo giờ. Mẫu CPU delta `/proc/stat`, RAM/PSI,
+  nhiệt pin/trạng thái thermal và ZRAM tối đa mỗi phút; lưu đĩa mỗi 5 phút.
+  Khoảng không quan sát được trên 90 giây không được điền thành thời gian dùng.
+  Đây là độ phủ quan sát của watcher, không phải lịch sử đầy đủ của Android.
+- Tự động chỉ dùng các profile hiện có. Với ứng dụng chưa có quy tắc thủ công:
+  cần ít nhất 2 ngày, 1800 giây, 3 phiên và 600 giây trong giờ hiện tại, foreground
+  ổn định 30 giây, game hỗ trợ performance và mẫu CPU/PSI/thermal không quá 2 phút.
+  Khi PSI FULL >=2% hoặc Android thermal status >=3 đã đo được, không boost và
+  hoàn tác game mode về giá trị ban đầu, giữ 2 phút trước khi cân nhắc lại.
+  Các ngưỡng này là chính sách thử nghiệm, không chứng minh hiệu quả hay thay
+  cơ chế bảo vệ nhiệt. Các ứng dụng thường vẫn dùng Hằng ngày; không dự đoán
+  để boost ứng dụng trước khi mở. Quy tắc thủ công ưu tiên; bảo vệ áp lực vẫn áp dụng.
+- AI nhận thống kê theo giờ và tối đa 16 app-ID tạm thời, không có package,
+  thông báo, nội dung hay URL. Bảng tên app chỉ giữ trên máy cùng kết quả để
+  đối chiếu chính xác kể cả khi thứ hạng dùng thay đổi. Không đưa lịch sử vào
+  báo cáo export công khai. Múi giờ mặc định lấy từ Android, dự phòng UTC.
+- Khi bật lịch: watcher kiểm tra sau giờ chọn, cần module/ghi nhận/AI cùng bật
+  và ít nhất 2 mẫu/60 giây quan sát. Một lần thử mỗi ngày địa phương; ghi dấu
+  **trước** gọi mạng, kể cả API lỗi/reboot không tự thử lại trong ngày đó. Phân
+  tích thủ công vẫn là thao tác tường minh và cũng đánh dấu đã phân tích hôm nay.
+  Lịch chạy trong worker riêng, không chặn vòng đổi profile/hoàn tác.
+- AI chỉ tạo văn bản đề xuất. Bạn xem rồi đặt profile tại **Ứng dụng**, hoặc
+  bật/tắt các điều khiển hiện có. Không có bộ thực thi lệnh hay tự áp dụng AI.
+  Chưa đủ 2 ngày có mẫu thì chỉ tiếp tục đo; chưa có dữ liệu thực không kết luận
+  hiệu năng hoặc tiết kiệm pin. Cần kiểm chứng overhead và hành vi trên houji.
+- Tắt ghi nhận dừng thu thập; xóa lịch sử vô hiệu hóa cả bản nhớ trong watcher
+  và xóa phân tích gần nhất, giữ dấu lần gọi hôm nay để tránh retry. Gỡ module
+  xóa cả các file học thói quen. Mọi file này là 0600 trong thư mục 0700.
+  Watcher dọn các ngày quá hạn và kết quả AI cũ mỗi giờ kể cả khi tắt ghi nhận;
+  khi module không chạy, việc dọn tiếp tục vào lần chạy sau.
 
 ## CLI
 
@@ -233,7 +279,7 @@ binary thuần Go CGO=0 dù cross-compile thành công. Không build bằng `net
 Go runtime được link vào binary; license BSD kèm ZIP. Không có dependency Go
 bên thứ ba hoặc HTTP server chạy nền.
 
-Đầu ra `dist/HNHouji-Experience-0.1.3-preview.zip`, checksum và manifest; không
+Đầu ra `dist/HNHouji-Experience-0.2.0-preview.zip`, checksum và manifest; không
 đưa source test, node_modules, model, key hay state vào ZIP. Build metadata nằm
 trong manifest. Build riêng tạo ZIP generic; khi được workflow kernel gọi,
 tạo ZIP có hậu tố bản kernel/hash và metadata nhúng. Workflow module không tự
@@ -254,7 +300,7 @@ publish; workflow kernel chính thu thập cặp đã xác minh để phát hàn
   CPU** trung bình trên bài đo 10 phút; dùng simpleperf/Perfetto hoặc CPU delta
   `/proc/<watcher PID>/stat` đối chiếu `/proc/stat`, không coi loadavg là CPU %.
 - Đo p95/p99 frame time, RAM và pin lặp lại trước khi công bố cải thiện.
-  AI không tạo kết nối khi chưa cấu hình hoặc khi không có thao tác người dùng.
+  AI không tạo kết nối khi chưa cấu hình/bị tắt; lịch chỉ chạy khi đã bật riêng.
 
 Nguồn: [KSU WebUI](https://kernelsu.org/guide/module-webui.html),
 [GameManager](https://developer.android.com/games/optimize/adpf/gamemode/gamemode-interventions),

@@ -18,6 +18,59 @@ func aiConfig(base, style string) AIConfig {
 	return AIConfig{Enabled: true, Style: style, BaseURL: base, Model: "test-model", Auth: "bearer", Key: "test-secret", MaxOutput: 512, Timeout: 5}
 }
 
+func TestAICompletionMustFinishAndReasoningStaysSeparate(t *testing.T) {
+	for _, test := range []struct{ style, body, code string }{
+		{"chat_completions", `{"model":"actual-model","choices":[{"finish_reason":"length","message":{"content":"PARTIAL private chain"}}],"usage":{"completion_tokens":512,"completion_tokens_details":{"reasoning_tokens":400}}}`, "response-truncated"},
+		{"responses", `{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[{"type":"message","content":[{"type":"output_text","text":"PARTIAL"}]}]}`, "response-truncated"},
+		{"chat_completions", `{"choices":[{"finish_reason":"stop","message":{"content":"","reasoning":"hidden thinking"}}]}`, "response-empty"},
+		{"chat_completions", `{"choices":[{"finish_reason":"tool_calls","message":{"content":"PARTIAL"}}]}`, "response-unusable"},
+		{"responses", `{"status":"completed","output":[{"type":"message","status":"incomplete","content":[{"type":"output_text","text":"PARTIAL"}]}]}`, "response-incomplete"},
+		{"chat_completions", `{"choices":[{"message":{"content":"PARTIAL"}}]}`, "response-unusable"},
+		{"responses", `{"status":"in_progress","output":[{"type":"message","content":[{"type":"output_text","text":"PARTIAL"}]}]}`, "response-unusable"},
+	} {
+		t.Run(test.style+test.code, func(t *testing.T) {
+			a, f := fixture(t)
+			must(t, a.saveAI(aiConfig("https://example.test/v1", test.style)))
+			calls := 0
+			tr := transportFunc(func(*http.Request) (*http.Response, error) {
+				calls++
+				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(test.body)), Header: http.Header{}}, nil
+			})
+			r := a.askWithTransport(context.Background(), "", false, tr)
+			if r["ai_error"] != test.code || strings.Contains(pretty(r), "PARTIAL") || calls != 1 || f.writes != 0 {
+				t.Fatal(r, calls)
+			}
+		})
+	}
+	a, _ := fixture(t)
+	must(t, a.saveAI(aiConfig("https://openrouter.ai/api/v1", "chat_completions")))
+	tr := transportFunc(func(r *http.Request) (*http.Response, error) {
+		var body map[string]any
+		must(t, json.NewDecoder(r.Body).Decode(&body))
+		if body["reasoning"].(map[string]any)["exclude"] != true {
+			t.Fatal(body)
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"model":"model-test-secret","choices":[{"finish_reason":"stop","message":{"content":"Kết quả cuối","reasoning":"HIDDEN"}}]}`)), Header: http.Header{}}, nil
+	})
+	r := a.askWithTransport(context.Background(), "", false, tr)
+	if r["answer"] != "Kết quả cuối" || strings.Contains(pretty(r), "HIDDEN") || strings.Contains(pretty(r), "test-secret") {
+		t.Fatal(r)
+	}
+}
+
+func TestAITokenDefaultPreservesExplicitLimit(t *testing.T) {
+	c := aiConfig("https://example.test/v1", "responses")
+	must(t, c.validate())
+	if c.MaxOutput != 512 {
+		t.Fatal("changed saved budget")
+	}
+	c.MaxOutput = 0
+	must(t, c.validate())
+	if c.MaxOutput != 1024 {
+		t.Fatal(c.MaxOutput)
+	}
+}
+
 func TestAIAbsentDisabledNoNetwork(t *testing.T) {
 	a, _ := fixture(t)
 	calls := 0
@@ -56,12 +109,12 @@ func TestAIProtocolsAndPrivacy(t *testing.T) {
 					if r.URL.Path != "/v1/responses" || payload["store"] != false {
 						t.Error(payload)
 					}
-					io.WriteString(w, `{"output":[{"type":"message","content":[{"type":"output_text","text":"<script>bad()</script> test-secret"}]}],"usage":{"input_tokens":12,"output_tokens":4}}`)
+					io.WriteString(w, `{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"<script>bad()</script> test-secret"}]}],"usage":{"input_tokens":12,"output_tokens":4}}`)
 				} else {
 					if r.URL.Path != "/v1/chat/completions" {
 						t.Error(r.URL.Path)
 					}
-					io.WriteString(w, `{"choices":[{"message":{"content":"<script>bad()</script> test-secret"}}],"usage":{"total_tokens":16}}`)
+					io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"<script>bad()</script> test-secret"}}],"usage":{"total_tokens":16}}`)
 				}
 			}))
 			defer server.Close()
@@ -89,7 +142,7 @@ func TestAITestOmitsTelemetry(t *testing.T) {
 		if strings.Contains(string(b), "metrics") || strings.Contains(string(b), "MemTotal") {
 			t.Fatal("test sends device report")
 		}
-		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"choices":[{"message":{"content":"ok"}}]}`)), Header: http.Header{}}, nil
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"choices":[{"finish_reason":"stop","message":{"content":"ok"}}]}`)), Header: http.Header{}}, nil
 	})
 	if r := a.askWithTransport(context.Background(), "", true, tr); r["source"] != "api" {
 		t.Fatal(r)

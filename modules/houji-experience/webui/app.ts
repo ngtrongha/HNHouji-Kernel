@@ -16,9 +16,15 @@ let refreshing = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
 const labels: Record<string, string> = { observe: "Quan sát", daily: "Hằng ngày", "native-game": "Game Android", "windows-game": "Game Windows", linux: "Linux", sleep: "Màn hình nghỉ" };
 const reasons: Record<string, string> = { "daily-default": "Hằng ngày mặc định: áp dụng preset kernel có hỗ trợ và các quy tắc ứng dụng đã chọn.", disabled: "Tự động đang tắt; không áp dụng tinh chỉnh.", "rules-local": "Hoạt động bằng quy tắc cục bộ, không gọi AI.", "integration-observe": "Theo dõi ứng dụng; cấu hình đồ họa/container nằm trong ứng dụng đó.", "game-mode-unsupported": "GameManager chưa hỗ trợ performance cho ứng dụng này.", "legacy-conflict": "Helper cũ xuất hiện. Xử lý trong Chẩn đoán rồi reboot.", "restore-conflict": "Có thay đổi bên ngoài hoặc trạng thái chưa khôi phục được. Xem Chẩn đoán.", "reboot-required": "Reboot sau khi xử lý helper cũ trước khi bật tự động.", "owner-user-only": "Chỉ quản lý người dùng chính (user 0).", "watcher-offline": "Watcher chưa chạy. Reboot sau cài đặt và kiểm tra Manager.", "not-started": "Chưa khởi động watcher." };
+reasons["adaptive-learned-game"] = "Đã đủ lịch sử trong khung giờ này; chọn Game Android cho ứng dụng hỗ trợ. Có thể đặt quy tắc riêng trong Ứng dụng.";
+reasons["adaptive-pressure"] = "Đã đo được áp lực tài nguyên; trở về Hằng ngày và hoàn tác game mode do module quản lý.";
 
 function notify(message: string, error = false) { const box = $("notification"); box.textContent = message; box.classList.toggle("error", error); box.hidden = false; }
-function failure(error: unknown) { notify(error instanceof Error ? error.message : "Không thể hoàn thành thao tác.", true); }
+function failure(error: unknown) {
+  const code = error instanceof Error ? error.message : "Không thể hoàn thành thao tác.";
+  const messages:Record<string,string> = {"learning-needs-more-samples":"Chưa đủ dữ liệu đã lưu. Để module quan sát thêm ít nhất vài phút rồi cập nhật thống kê.","ai-disabled-or-not-configured":"Hãy cấu hình và bật API trong Trợ lý AI trước khi phân tích.","learning-disabled":"Ghi nhận hoặc module đang tắt; bật lại trước khi phân tích.","learning-changed-during-analysis":"Cài đặt đã đổi khi đang phân tích; kết quả không được lưu.","unknown timezone":"Múi giờ không hợp lệ. Ví dụ: Asia/Ho_Chi_Minh.","learning-history-invalid":"Lịch sử không hợp lệ. Xóa lịch sử để bắt đầu quan sát lại."};
+  notify(messages[code] || code, true);
+}
 function metric(value: unknown, suffix: string, divisor = 1, digits = 0): string { return typeof value === "number" && Number.isFinite(value) ? `${(value / divisor).toLocaleString("vi-VN", { maximumFractionDigits: digits })}${suffix}` : "—"; }
 function fillAdvice(report: any) {
   const list = $("local-advice"); list.replaceChildren();
@@ -53,7 +59,7 @@ function render(status: any) {
   text("battery-value", metric(metrics.battery_percent, "%"));
   fillAdvice(status.report || {});
 	if(status.restore_conflicts>0 || (!status.config?.enabled && status.journal_entries>0)) notify("Còn thay đổi chưa khôi phục. Mở Chẩn đoán để xem pending_restore; giá trị bên ngoài được giữ nguyên.",true);
-  text("ai-state", status.ai?.configured ? (status.ai.enabled ? "Đã cấu hình · gọi theo yêu cầu" : "Đã cấu hình · đang tắt") : "Chưa cấu hình · core vẫn hoạt động");
+  text("ai-state", status.ai?.configured ? (status.ai.enabled ? "Đã cấu hình · xem lịch ở Thói quen" : "Đã cấu hình · đang tắt") : "Chưa cấu hình · core vẫn hoạt động");
 }
 
 async function refresh() {
@@ -70,11 +76,12 @@ function bind(id: string, callback: () => Promise<void>) {
 }
 
 function showTab(id: string) {
-  if (!["overview", "apps", "ai", "tools", "diagnostics"].includes(id)) return;
+  if (!["overview", "apps", "habits", "ai", "tools", "diagnostics"].includes(id)) return;
   tab = id;
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-tab]")) { const selected = button.dataset.tab === id; button.setAttribute("aria-selected", String(selected)); button.tabIndex = selected ? 0 : -1; }
   for (const section of document.querySelectorAll<HTMLElement>("main > section")) section.hidden = section.id !== id;
   if (id === "ai") void loadAI().catch(failure);
+  if (id === "habits") void loadLearning().catch(failure);
 }
 
 async function loadAI() {
@@ -142,15 +149,58 @@ $("api-form").addEventListener("submit", async (event) => {
 });
 select("api-auth").addEventListener("change", () => { input("api-key").disabled = select("api-auth").value === "none"; if (input("api-key").disabled) input("api-key").value = ""; });
 
-function showAnswer(result: any) {
-  const answer = $("ai-answer"); answer.hidden = false;
+function showAnswer(result: any, target = "ai-answer") {
+  const answer = $(target); answer.hidden = false;
   // Never render provider output as HTML, Markdown HTML, JS or shell commands.
-  answer.textContent = result.source === "api" ? `${result.answer}\n\n${result.elapsed_ms} ms · ${pretty(result.usage)}` : `Báo cáo cơ bản (${result.ai_error || "không dùng AI"})\n\n${(result.report?.advice || []).join("\n\n")}`;
+  const errors: Record<string,string> = {
+    "response-truncated":"API đã hết giới hạn token; phần trả lời dở dang được bỏ qua. Có thể tăng giới hạn token hoặc chọn model khác rồi thử thủ công.",
+    "response-incomplete":"API trả lời chưa hoàn tất; đang dùng báo cáo cục bộ.",
+    "response-empty":"API không có nội dung trả lời cuối; model reasoning có thể đã dùng hết ngân sách token.",
+    "response-filtered":"Nhà cung cấp đã lọc phản hồi; đang dùng báo cáo cục bộ.",
+    "response-unusable":"Phản hồi API không hoàn tất ở dạng văn bản hỗ trợ; đang dùng báo cáo cục bộ."
+  };
+  const content = result.source === "api" ? result.answer : `Báo cáo cơ bản · ${errors[result.ai_error] || result.ai_error || "không dùng AI"}\n\n${(result.report?.advice || []).join("\n\n")}`;
+  const metadata = result.usage ? `\n\n${result.model ? `Model: ${result.model}\n` : ""}${result.elapsed_ms} ms · Kết thúc: ${result.finish_reason || "không cung cấp"}\n${pretty(result.usage)}` : "";
+  answer.textContent = content + metadata;
 }
 bind("api-test", async () => { showAnswer(await rpc({ action: "ai_test" })); });
 bind("ai-ask", async () => { text("ai-preview", pretty(await rpc({ action: "ai_preview" }))); showAnswer(await rpc({ action: "ai_ask", prompt: $<HTMLTextAreaElement>("ai-prompt").value })); });
 bind("api-disable", async () => { await act({ action: "ai_disable" }, "AI đã tắt. Core không bị ảnh hưởng."); await loadAI(); });
 bind("api-clear", async () => { await act({ action: "ai_clear" }, "Đã xóa cấu hình và khóa API."); $<HTMLFormElement>("api-form").reset(); input("api-key").value = ""; });
+
+function showDaily(daily: any) {
+  if (!daily?.result) { text("learning-answer", "Chưa có phân tích. AI không tự áp dụng thiết lập."); $("learning-legend").hidden = true; return; }
+  showAnswer(daily.result, "learning-answer");
+  text("learning-legend", `Phân tích lúc ${daily.at} · ${daily.automatic ? "Theo lịch" : "Thủ công"}\nBảng đối chiếu tại thời điểm phân tích, chỉ trên máy:\n${(daily.legend || []).map((x:any) => `${x.id}: ${x.package}`).join("\n")}`);
+  $("learning-legend").hidden = false;
+}
+async function loadLearning() {
+  const status = await rpc<any>({ action: "learning_status" });
+  if (status.error) throw new Error(status.error);
+  const c = status.config;
+  input("learning-enabled").checked = c.enabled; input("learning-adaptive").checked = c.adaptive;
+  input("learning-daily").checked = c.daily_ai; input("learning-charging").checked = c.charging_only;
+  input("learning-hour").value = String(c.hour); input("learning-zone").value = c.timezone;
+  const days: any[] = Object.values(status.history?.days || {});
+  const total = (key:string) => days.reduce((n,d) => n + (d[key] || 0), 0);
+  text("learning-coverage", `${days.length} ngày · Đã quan sát ${metric(total("observed_seconds"), " phút",60)} · Màn hình hoạt động ${metric(total("active_seconds"), " phút",60)} · ${total("samples")} mẫu. Lưu gần nhất: ${status.history?.through || "chưa có"}.`);
+  const cpu = days.reduce((x,d) => { const m=d.metrics?.cpu_busy_percent; if(m){x.sum+=m.sum;x.count+=m.count;x.max=Math.max(x.max,m.max);} return x; }, {sum:0,count:0,max:0});
+  const heavy = days.reduce((n,d)=>n+(d.hours||[]).reduce((s:number,h:any)=>s+(h.heavy_samples||0),0),0);
+  text("learning-intensity", `CPU toàn máy: ${cpu.count ? `${metric(cpu.sum/cpu.count,"%",1,1)} trung bình / ${metric(cpu.max,"%",1,1)} cao nhất (${cpu.count} mẫu)` : "chưa đủ hai lần đọc CPU"}. ${heavy} mẫu tải nặng/áp lực. AI thử gần nhất: ${status.last_attempt?.at || "chưa gọi"}.`);
+  const hours = Array.from({length:24}, (_,hour) => days.reduce((n,d) => n + (d.hours?.[hour]?.active_seconds || 0), 0));
+  const chart = $("learning-hours"); chart.replaceChildren();
+  hours.forEach((seconds,hour) => { const row = document.createElement("label"); row.className = "habit-hour"; const meter = document.createElement("meter"); meter.min = 0; meter.max = Math.max(60,...hours); meter.value = seconds; meter.setAttribute("aria-label", `${hour} giờ: ${Math.round(seconds/60)} phút`); row.append(document.createTextNode(`${String(hour).padStart(2,"0")}h`),meter,document.createTextNode(`${Math.round(seconds/60)}′`)); chart.append(row); });
+  const apps = $("learning-apps"); apps.replaceChildren();
+  for (const item of status.apps || []) { const row = document.createElement("p"); row.className = "app-name"; row.textContent = `${item.id} · ${item.package} · ${Math.round(item.seconds/60)} phút / ${item.days} ngày / ${item.sessions} phiên · ${labels[item.profile] || "Theo quy tắc tự động"}`; apps.append(row); }
+  text("learning-preview", pretty(await rpc({action:"learning_preview"}))); showDaily(status.daily);
+}
+$("learning-form").addEventListener("submit", async event => {
+  event.preventDefault(); const button = $("learning-form").querySelector<HTMLButtonElement>('button[type="submit"]')!; button.disabled = true;
+  try { await rpc({ action:"learning_save", learning:{ enabled:input("learning-enabled").checked,adaptive:input("learning-adaptive").checked,daily_ai:input("learning-daily").checked,hour:Number(input("learning-hour").value),charging_only:input("learning-charging").checked,timezone:input("learning-zone").value.trim() } }); notify("Đã lưu. Quy tắc cục bộ chọn profile; đề xuất AI cần bạn xem và đặt bằng điều khiển có sẵn."); await loadLearning(); } catch(error) { failure(error); } finally { button.disabled = false; }
+});
+bind("learning-refresh", loadLearning);
+bind("learning-reset", async () => { await rpc({action:"learning_reset"}); await loadLearning(); notify("Đã xóa lịch sử và phân tích. Bắt đầu quan sát lại; không tự thử thêm API hôm nay."); });
+bind("learning-analyze", async () => { showDaily(await rpc({action:"learning_analyze"})); });
 
 document.addEventListener("visibilitychange", () => { if (document.hidden) { if (timer) clearTimeout(timer); input("api-key").value = ""; } else { void refresh(); schedule(); } });
 window.addEventListener("pagehide", () => { if (timer) clearTimeout(timer); input("api-key").value = ""; });

@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -33,6 +34,10 @@ type App struct {
 	protectedStamp     string
 	writeFailureStamp  string
 	writeFailureReason string
+	learner            *Learner
+	dailyBusy          atomic.Bool
+	dailyChecked       time.Time
+	dailyPurgeAt       time.Time
 }
 
 func New(paths Paths, runner Runner) *App { return &App{Paths: paths, Runner: runner} }

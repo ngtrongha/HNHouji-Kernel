@@ -203,6 +203,9 @@ func (a *App) Install(ctx context.Context, executable string) error {
 	if e = a.migrateLegacy(ctx, &c); e != nil {
 		return e
 	}
+	if e = a.initLearning(ctx); e != nil {
+		return e
+	}
 	// A standalone binary allows cleanup even if the Manager skips a disabled module.
 	data, e := os.ReadFile(executable)
 	if e != nil {
@@ -220,6 +223,7 @@ func (a *App) Install(ctx context.Context, executable string) error {
 }
 
 func (a *App) Uninstall(ctx context.Context) error {
+	defer a.clearLearning()
 	unlock, e := a.lock("state")
 	if e != nil {
 		return e
@@ -402,6 +406,7 @@ func (a *App) Step(ctx context.Context, pkg string, asleep bool) error {
 		profile = "sleep"
 		pkg = ""
 	}
+	profile, adaptiveReason := a.adaptiveProfile(ctx, profile, pkg, asleep, time.Now())
 	if err := a.restoreEntries(ctx, &j, func(e Entry) bool { return e.Kind == "game" && (profile != "native-game" || e.Package != pkg) }); err != nil {
 		a.runtime("observe", "", "restore-conflict")
 		return err
@@ -424,6 +429,9 @@ func (a *App) Step(ctx context.Context, pkg string, asleep bool) error {
 	}
 	if profile == "windows-game" || profile == "linux" {
 		reason = "integration-observe"
+	}
+	if adaptiveReason != "" {
+		reason = adaptiveReason
 	}
 	a.runtime(profile, pkg, reason)
 	return nil
@@ -460,12 +468,14 @@ func (a *App) Watch(ctx context.Context) error {
 			count = 1
 		}
 		if count >= 2 || asleep || pkg == "" {
+			_ = a.Observe(ctx, pkg, asleep, time.Now())
 			if e = a.Step(ctx, pkg, asleep); e != nil {
 				if time.Since(lastErrorAt) > 5*time.Minute {
 					a.logEvent("step-needs-review")
 					lastErrorAt = time.Now()
 				}
 			}
+			a.maybeDailyAI(ctx, time.Now())
 		}
 		wait := 3 * time.Second
 		if asleep {
@@ -475,6 +485,9 @@ func (a *App) Watch(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			timer.Stop()
+			if a.learner != nil {
+				_ = a.flushLearning(a.learner, time.Now())
+			}
 			u, err := a.lock("state")
 			if err == nil {
 				_ = a.restoreAll(context.Background())
@@ -496,6 +509,7 @@ func (a *App) snapshotConfig() map[string]any {
 
 func (a *App) CleanupBoot(ctx context.Context) error {
 	if !exists(a.Paths.Module) {
+		a.clearLearning()
 		_ = os.Remove(a.state("ai.json"))
 	}
 	if e := a.Recover(ctx); e != nil {

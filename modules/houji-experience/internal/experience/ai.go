@@ -46,7 +46,7 @@ func (c *AIConfig) validate() error {
 		return errors.New("invalid or missing API key")
 	}
 	if c.MaxOutput == 0 {
-		c.MaxOutput = 512
+		c.MaxOutput = 1024
 	}
 	if c.Timeout == 0 {
 		c.Timeout = 30
@@ -103,13 +103,22 @@ func androidTransport() *http.Transport {
 	return &http.Transport{Proxy: nil, TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}, DisableKeepAlives: true, ResponseHeaderTimeout: 30 * time.Second}
 }
 
-const advisorInstruction = "Bạn là trợ lý tư vấn cho Xiaomi 14 houji 8GB, HyperOS, kernel r11 GKI 6.1. Chỉ phân tích dữ liệu được cung cấp bằng tiếng Việt. Không suy diễn benchmark hoặc tiết kiệm pin. Không đề nghị sửa WALT, HZ, thermal, MM/ZRAM, DRM, F2FS, kernel pins. Nêu dữ liệu còn thiếu và đề nghị phép đo. Không phát lệnh shell hoặc yêu cầu thực thi. Các ngưỡng trong báo cáo chỉ mang tính chẩn đoán."
+const advisorInstruction = `Bạn tư vấn dữ liệu cho Xiaomi 14 houji 8GB, HyperOS, kernel r11 GKI 6.1.
+Chỉ trả lời cuối cùng bằng tiếng Việt, tối đa 180 từ, không nhắc lại yêu cầu hay trình bày quá trình suy nghĩ/kế hoạch phân tích. Trả lời trực tiếp bằng tối đa 4 gạch đầu dòng: tình trạng, nhận xét, dữ liệu thiếu, phép đo đề xuất.
+Chỉ dùng dữ liệu được cung cấp. MemAvailable_kib/1048576 là GiB RAM khả dụng. cpu_load_average_1m là số tác vụ chạy/chờ trung bình, có thể gồm chờ I/O; không phải phần trăm CPU và không đủ để kết luận nghẽn CPU.
+psi_some_avg10 và psi_full_avg10 là phần trăm thời gian chờ do áp lực bộ nhớ trong cửa sổ trung bình 10 giây; FULL chỉ thời gian tất cả tác vụ không nhàn rỗi cùng chờ. PSI không đo điện năng hoặc pin chờ; giá trị 0 trong một mẫu không chứng minh hệ thống luôn hết áp lực.
+battery_celsius đo nhiệt độ pin, không phải SoC. Một mức phần trăm pin không đủ đo tiêu hao. Không suy diễn benchmark, FPS, tiết kiệm pin hoặc nguyên nhân từ một mẫu. Ngưỡng trong báo cáo chỉ mang tính chẩn đoán.
+Không đề nghị sửa WALT, HZ, thermal, MM/ZRAM, DRM, F2FS hoặc kernel pins. Không đưa lệnh shell/yêu cầu thực thi. Nêu rõ điều chưa xác định và đề xuất đo lặp cùng workload.`
 
 func (a *App) Ask(ctx context.Context, prompt string, test bool) map[string]any {
 	return a.askWithTransport(ctx, prompt, test, nil)
 }
 
 func (a *App) askWithTransport(ctx context.Context, prompt string, test bool, transport http.RoundTripper) map[string]any {
+	return a.requestAI(ctx, prompt, test, "", "", transport)
+}
+
+func (a *App) requestAI(ctx context.Context, prompt string, test bool, instruction, payload string, transport http.RoundTripper) map[string]any {
 	fallback := func(code string) map[string]any {
 		return map[string]any{"source": "local-rules", "ai_error": code, "report": a.Report(ctx)}
 	}
@@ -132,10 +141,14 @@ func (a *App) askWithTransport(ctx context.Context, prompt string, test bool, tr
 	}
 	defer unlock()
 	text := "Trả lời ngắn: kết nối hoạt động."
-	instructions := "Return a brief connection confirmation."
-	if !test {
+	instructions := "Chỉ trả lời bằng tiếng Việt: Kết nối hoạt động. Không trình bày suy nghĩ."
+	if !test && instruction == "" {
 		instructions = advisorInstruction
 		text = "Câu hỏi: " + prompt + "\nBản tóm tắt được phép gửi:\n" + pretty(a.Report(ctx))
+	}
+	if instruction != "" {
+		instructions = instruction
+		text = payload
 	}
 	var body any
 	route := "/chat/completions"
@@ -144,6 +157,12 @@ func (a *App) askWithTransport(ctx context.Context, prompt string, test bool, tr
 		body = map[string]any{"model": c.Model, "instructions": instructions, "input": text, "max_output_tokens": c.MaxOutput, "store": false}
 	} else {
 		body = map[string]any{"model": c.Model, "messages": []map[string]string{{"role": "system", "content": instructions}, {"role": "user", "content": text}}, "max_completion_tokens": c.MaxOutput, "stream": false}
+		endpoint, _ := url.Parse(c.BaseURL)
+		if endpoint.Hostname() == "openrouter.ai" {
+			// Excludes returned reasoning, not reasoning compute/token usage.
+			// Do not force reasoning off: some routed models require it.
+			body.(map[string]any)["reasoning"] = map[string]bool{"exclude": true}
+		}
 	}
 	data, _ := json.Marshal(body)
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(c.Timeout)*time.Second)
@@ -178,13 +197,20 @@ func (a *App) askWithTransport(ctx context.Context, prompt string, test bool, tr
 		return fallback("response-too-large")
 	}
 	var parsed struct {
+		Model             string `json:"model"`
+		Status            string `json:"status"`
+		IncompleteDetails struct {
+			Reason string `json:"reason"`
+		} `json:"incomplete_details"`
 		Choices []struct {
-			Message struct {
+			FinishReason string `json:"finish_reason"`
+			Message      struct {
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
 		Output []struct {
 			Type    string `json:"type"`
+			Status  string `json:"status"`
 			Content []struct {
 				Type string `json:"type"`
 				Text string `json:"text"`
@@ -196,13 +222,38 @@ func (a *App) askWithTransport(ctx context.Context, prompt string, test bool, tr
 		return fallback("response-invalid")
 	}
 	answer := ""
+	finish := "not-provided"
 	if c.Style == "chat_completions" {
 		if len(parsed.Choices) > 0 {
 			answer = parsed.Choices[0].Message.Content
+			if parsed.Choices[0].FinishReason != "" {
+				finish = parsed.Choices[0].FinishReason
+			}
 		}
 	} else {
+		switch parsed.Status {
+		case "completed":
+			finish = "stop"
+		case "failed":
+			finish = "error"
+		case "incomplete":
+			finish = "incomplete"
+			if parsed.IncompleteDetails.Reason == "max_output_tokens" {
+				finish = "length"
+			}
+		default:
+			if parsed.Status != "" {
+				finish = "unknown"
+			}
+		}
 		for _, item := range parsed.Output {
 			if item.Type == "message" {
+				if item.Status == "incomplete" && finish != "length" {
+					finish = "incomplete"
+				}
+				if item.Status != "" && item.Status != "completed" && item.Status != "incomplete" {
+					finish = "unknown"
+				}
 				for _, part := range item.Content {
 					if part.Type == "output_text" {
 						answer += part.Text + "\n"
@@ -210,9 +261,6 @@ func (a *App) askWithTransport(ctx context.Context, prompt string, test bool, tr
 				}
 			}
 		}
-	}
-	if strings.TrimSpace(answer) == "" {
-		return fallback("response-empty")
 	}
 	// Even a provider that echoes secrets cannot return them to the UI or logs.
 	if c.Key != "" {
@@ -225,6 +273,51 @@ func (a *App) askWithTransport(ctx context.Context, prompt string, test bool, tr
 			usage[key] = n
 		}
 	}
+	for _, key := range []string{"completion_tokens_details", "output_tokens_details"} {
+		var details struct {
+			ReasoningTokens int `json:"reasoning_tokens"`
+		}
+		if v, ok := parsed.Usage[key]; ok && json.Unmarshal(v, &details) == nil && details.ReasoningTokens >= 0 {
+			usage["reasoning_tokens"] = details.ReasoningTokens
+		}
+	}
+	if !map[string]bool{"stop": true, "length": true, "incomplete": true, "error": true, "content_filter": true, "tool_calls": true, "function_call": true, "not-provided": true}[finish] {
+		finish = "unknown"
+	}
+	model := parsed.Model
+	if c.Key != "" {
+		model = strings.ReplaceAll(model, c.Key, "[REDACTED]")
+	}
+	if len(model) > 200 || strings.ContainsAny(model, "\r\n") {
+		model = ""
+	}
+	withMetadata := func(result map[string]any) map[string]any {
+		result["elapsed_ms"] = time.Since(start).Milliseconds()
+		result["usage"] = usage
+		result["finish_reason"] = finish
+		if model != "" {
+			result["model"] = model
+		}
+		return result
+	}
+	code := ""
+	switch finish {
+	case "length":
+		code = "response-truncated"
+	case "incomplete":
+		code = "response-incomplete"
+	case "content_filter":
+		code = "response-filtered"
+	case "error", "tool_calls", "function_call", "unknown", "not-provided":
+		code = "response-unusable"
+	}
+	if code == "" && strings.TrimSpace(answer) == "" {
+		code = "response-empty"
+	}
+	if code != "" {
+		a.logEvent("ai-" + code)
+		return withMetadata(fallback(code))
+	}
 	a.logEvent("ai-success")
-	return map[string]any{"source": "api", "answer": answer, "elapsed_ms": time.Since(start).Milliseconds(), "usage": usage}
+	return withMetadata(map[string]any{"source": "api", "answer": answer})
 }

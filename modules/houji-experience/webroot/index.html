@@ -14,13 +14,14 @@
     <header class="masthead">
       <div class="brand-mark" aria-hidden="true">h<span>。</span></div>
       <div><p class="eyebrow">HNHOUJI / XIAOMI 14</p><h1>Experience</h1></div>
-      <span class="version">PREVIEW<br>0.1.3</span>
+      <span class="version">PREVIEW<br>0.2.0</span>
     </header>
     <div id="bridge-warning" class="notice" hidden>Mở WebUI từ KernelSU Manager để kết nối thiết bị. Nếu Manager không hỗ trợ bridge, dùng CLI houjictl. Trang này không dùng dữ liệu mô phỏng.</div>
     <div id="notification" class="notice" role="status" aria-live="polite" hidden></div>
     <nav class="tabs" role="tablist" aria-label="Chức năng">
       <button role="tab" id="tab-overview" aria-controls="overview" aria-selected="true" data-tab="overview">Tổng quan</button>
       <button role="tab" id="tab-apps" aria-controls="apps" aria-selected="false" data-tab="apps">Ứng dụng</button>
+      <button role="tab" id="tab-habits" aria-controls="habits" aria-selected="false" data-tab="habits">Thói quen</button>
       <button role="tab" id="tab-ai" aria-controls="ai" aria-selected="false" data-tab="ai">Trợ lý AI</button>
       <button role="tab" id="tab-tools" aria-controls="tools" aria-selected="false" data-tab="tools">Tiện ích</button>
       <button role="tab" id="tab-diagnostics" aria-controls="diagnostics" aria-selected="false" data-tab="diagnostics">Chẩn đoán</button>
@@ -46,16 +47,31 @@
         <div class="page-heading"><p class="eyebrow">QUY TẮC TRÊN THIẾT BỊ</p><h2>Ứng dụng của bạn</h2><p>Chỉ áp dụng cho package bạn chọn, trên người dùng chính (user 0).</p></div>
         <article class="card"><label for="app-search">Tìm package đã cài</label><div class="button-row"><input id="app-search" type="search" placeholder="Ví dụ: com.miHoYo…" autocomplete="off"><button id="load-apps" class="outline">Tải danh sách</button></div><p class="footnote">Game Android: chọn performance nếu được hỗ trợ. Game Windows/Linux: theo dõi tích hợp, không ép xung. Bảo vệ thông báo thêm ngoại lệ Doze; MILLET chỉ khi đọc được trạng thái.</p><div id="app-list" class="app-list"><p class="muted">Bấm “Tải danh sách” để đọc các ứng dụng đã cài.</p></div></article>
       </section>
+      <section id="habits" role="tabpanel" aria-labelledby="tab-habits" hidden>
+        <div class="page-heading"><p class="eyebrow">HỌC TRÊN THIẾT BỊ · 7 NGÀY</p><h2>Nhịp sử dụng của bạn</h2><p>Ghi nhận thời gian màn hình hoạt động, ứng dụng foreground và mẫu tài nguyên. Khoảng thiếu dữ liệu không được tính thành thời gian dùng.</p></div>
+        <article class="card"><h3>Cài đặt học thói quen</h3><form id="learning-form">
+          <label class="check"><input id="learning-enabled" type="checkbox"> Lưu thống kê riêng trên máy trong 7 ngày</label>
+          <label class="check"><input id="learning-adaptive" type="checkbox"> Tự chọn profile bằng quy tắc cục bộ</label>
+          <p>Quy tắc bạn đặt cho ứng dụng được ưu tiên. Game Android chỉ được chọn sau ít nhất 2 ngày quan sát, 30 phút dùng, 3 phiên và 10 phút trong khung giờ hiện tại; kiểm tra hỗ trợ performance và dữ liệu tài nguyên mới. Khi có áp lực đã đo được, trở về Hằng ngày. Đây là quy tắc thử nghiệm cần đối chiếu trên máy.</p>
+          <label class="check"><input id="learning-daily" type="checkbox"> Cho phép gửi thống kê tổng hợp tới AI mỗi ngày</label>
+          <div class="form-grid"><div><label for="learning-hour">Giờ bắt đầu phân tích (0–23)</label><input id="learning-hour" type="number" min="0" max="23" value="21" required></div><div><label for="learning-zone">Múi giờ</label><input id="learning-zone" type="text" value="Asia/Ho_Chi_Minh" maxlength="100" required></div></div>
+          <label class="check"><input id="learning-charging" type="checkbox"> Chỉ phân tích tự động khi đang sạc hoặc đầy pin</label>
+          <p class="footnote">Lịch AI mặc định tắt. Khi bật: tối đa một lần thử tự động mỗi ngày sau giờ chọn, cần AI được cấu hình và module đang bật. Có thể phát sinh phí; lỗi mạng không tự thử lại. AI chỉ tư vấn, bạn duyệt và thay đổi bằng các điều khiển có sẵn.</p>
+          <div class="button-row"><button class="primary" type="submit">Lưu cài đặt thói quen</button><button id="learning-refresh" class="outline" type="button">Cập nhật thống kê</button></div>
+        </form></article>
+        <article class="card"><h3>Phần thời gian đã quan sát</h3><p id="learning-coverage">Chưa tải dữ liệu.</p><p id="learning-intensity">Chưa có mẫu cường độ.</p><div id="learning-hours" class="habit-hours" aria-label="Thời gian dùng theo giờ"></div><p class="footnote">Cộng dồn theo giờ địa phương trong các ngày còn lưu. CPU là tải toàn máy, không phải CPU riêng của app. Mẫu tài nguyên tối đa mỗi phút; lưu đĩa mỗi 5 phút nên bảng có thể trễ. Không dùng bảng này để suy ra FPS hoặc tiết kiệm pin.</p><div id="learning-apps" class="app-list"></div></article>
+        <article class="card"><h3>AI đề xuất · Bạn quyết định</h3><details><summary>Thống kê sẽ gửi (không có tên package)</summary><pre id="learning-preview">Chưa tải dữ liệu.</pre></details><p class="footnote">AI nhận số liệu theo giờ, thống kê tài nguyên và tối đa 16 mã app tạm thời. Tên package chỉ nằm trong bảng đối chiếu trên máy. Không gửi lịch sử thông báo, nội dung ứng dụng hoặc khóa API trong dữ liệu thống kê.</p><div class="button-row"><button id="learning-analyze" class="primary">Phân tích thống kê ngay</button><button class="outline" data-open="apps">Duyệt &amp; đặt quy tắc ứng dụng →</button><button class="text-button" data-open="ai">Kết nối API</button></div><div id="learning-answer" class="answer" role="status" aria-live="polite">Chưa có phân tích. Không có thay đổi nào được AI tự áp dụng.</div><pre id="learning-legend" hidden></pre><button id="learning-reset" class="text-button danger-text">Xóa lịch sử &amp; phân tích đã lưu</button></article>
+      </section>
       <section id="ai" role="tabpanel" aria-labelledby="tab-ai" hidden>
-        <div class="page-heading"><p class="eyebrow">TÙY CHỌN · CHỈ TƯ VẤN</p><h2>Thêm một góc nhìn</h2><p>Không có model trên máy. AI chỉ được gọi khi bạn yêu cầu, không điều khiển profile.</p></div>
+        <div class="page-heading"><p class="eyebrow">TÙY CHỌN · CHỈ TƯ VẤN</p><h2>Thêm một góc nhìn</h2><p>Không có model trên máy. Gọi khi bạn yêu cầu hoặc bật lịch trong Thói quen. AI không tự áp dụng thiết lập.</p></div>
         <article class="card"><div class="section-title"><h3>Kết nối API</h3><span id="ai-state" class="tag">Chưa cấu hình</span></div>
           <form id="api-form">
             <div class="form-grid"><div><label for="api-style">Kiểu API</label><select id="api-style"><option value="chat_completions">Chat Completions</option><option value="responses">Responses</option></select></div><div><label for="api-auth">Xác thực</label><select id="api-auth"><option value="bearer">Bearer token / API key</option><option value="none">Không xác thực (proxy riêng)</option></select></div></div>
             <label for="api-url">Base URL (bao gồm tiền tố API)</label><input id="api-url" type="url" placeholder="https://api.example.com/v1" required autocomplete="off">
             <label for="api-model">Tên model</label><input id="api-model" type="text" placeholder="Nhập model do nhà cung cấp cung cấp" required maxlength="200" autocomplete="off">
             <label for="api-key">API key / token</label><input id="api-key" type="password" placeholder="Nhập sau khi cài, không nằm trong ZIP" autocomplete="new-password" maxlength="4096"><small>Để trống để giữ khóa đã lưu cho cùng endpoint. Khóa không được đọc lại từ backend.</small>
-            <div class="form-grid"><div><label for="api-limit">Giới hạn token trả lời</label><input id="api-limit" type="number" min="64" max="2048" value="512" required></div><div><label for="api-timeout">Timeout (giây)</label><input id="api-timeout" type="number" min="5" max="60" value="30" required></div></div>
-            <label class="check"><input id="api-enabled" type="checkbox" checked> Cho phép gọi API khi bấm kiểm tra hoặc phân tích</label>
+            <div class="form-grid"><div><label for="api-limit">Giới hạn token trả lời</label><input id="api-limit" type="number" min="64" max="2048" value="1024" required></div><div><label for="api-timeout">Timeout (giây)</label><input id="api-timeout" type="number" min="5" max="60" value="30" required></div></div>
+            <label class="check"><input id="api-enabled" type="checkbox" checked> Cho phép gọi API thủ công và theo lịch đã bật trong Thói quen</label>
             <div class="button-row"><button class="primary" type="submit">Lưu cấu hình</button><button id="api-test" type="button" class="outline">Kiểm tra kết nối</button></div>
           </form>
           <div class="button-row secondary-actions"><button id="api-disable" class="text-button">Tắt AI</button><button id="api-clear" class="text-button danger-text">Xóa cấu hình &amp; khóa</button></div>

@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-test('WebUI is offline, has five tabs and no secret browser storage', () => {
+test('WebUI is offline, has six tabs and no secret browser storage', () => {
   const html = readFileSync('webroot/index.html', 'utf8');
   const source = readFileSync('webui/app.ts', 'utf8');
-  assert.equal((html.match(/role="tab" /g) || []).length, 5);
+  assert.equal((html.match(/role="tab" /g) || []).length, 6);
   assert.match(html, /connect-src 'none'/);
   assert.doesNotMatch(html, /<script[^>]+src="https?:/);
   assert.doesNotMatch(source, /innerHTML|localStorage|sessionStorage|\beval\s*\(/);

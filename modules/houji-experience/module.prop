@@ -1,6 +1,6 @@
 id=houji_experience
 name=HNHouji Experience
-version=0.1.3-preview
-versionCode=103
+version=0.2.0-preview
+versionCode=200
 author=HNHouji
-description=Daily kernel runtime tuning, app profiles, diagnostics and optional AI for houji. Requires matching kernel metadata. Preview.
+description=Daily profiles, private 7-day usage learning and optional daily AI advice for review. Requires matching houji kernel metadata. Preview.

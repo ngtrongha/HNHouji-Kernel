@@ -4,17 +4,19 @@ import (
 	"context"
 	"errors"
 	"os"
+	"time"
 )
 
 type Request struct {
-	Action    string    `json:"action"`
-	Package   string    `json:"package,omitempty"`
-	Profile   string    `json:"profile,omitempty"`
-	Guide     string    `json:"guide,omitempty"`
-	Protected bool      `json:"protected,omitempty"`
-	Enabled   bool      `json:"enabled,omitempty"`
-	AI        *AIConfig `json:"ai,omitempty"`
-	Prompt    string    `json:"prompt,omitempty"`
+	Action    string          `json:"action"`
+	Package   string          `json:"package,omitempty"`
+	Profile   string          `json:"profile,omitempty"`
+	Guide     string          `json:"guide,omitempty"`
+	Protected bool            `json:"protected,omitempty"`
+	Enabled   bool            `json:"enabled,omitempty"`
+	AI        *AIConfig       `json:"ai,omitempty"`
+	Prompt    string          `json:"prompt,omitempty"`
+	Learning  *LearningConfig `json:"learning,omitempty"`
 }
 type Response struct {
 	OK    bool   `json:"ok"`
@@ -32,6 +34,19 @@ func (a *App) Dispatch(ctx context.Context, r Request) Response {
 
 func (a *App) dispatch(ctx context.Context, r Request) (any, error) {
 	switch r.Action {
+	case "learning_status":
+		return a.LearningStatus(ctx), nil
+	case "learning_preview":
+		return a.dailyPayload(time.Now())
+	case "learning_analyze":
+		return a.dailyAnalyze(ctx, time.Now(), false, nil)
+	case "learning_save":
+		if r.Learning == nil {
+			return nil, errors.New("missing learning configuration")
+		}
+		return nil, a.saveLearning(*r.Learning)
+	case "learning_reset":
+		return nil, a.resetLearning()
 	case "status":
 		return a.Status(ctx), nil
 	case "doctor":
