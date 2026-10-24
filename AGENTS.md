@@ -189,3 +189,9 @@ Every time a CI build error or device runtime bug occurs, **you MUST add its sym
   2. Commit `502fd3b03` merged upstream `.github/actions/stock-config` (replacing `kernel/config_data` `/proc/config.gz` with a generic AOSP prebuilt config lacking Xiaomi's expected config markers) and changed `susfs-setup` / `root-setup` pins (`pershoot/susfs4ksu` `6387756d6` & `161c058fe`).
 - **Prevention**: Maintain the exact `Release 11 (r11)` (`91e410e23`) codebase and pin state (with only Rule 18's `.workspace_path` Bazel cache guard added). Never enable `.github/actions/stock-config` `/proc/config.gz` spoofing or mutate WALT window ticks on Xiaomi 14 (`houji`).
 
+---
+
+## Rule 20: Export User Reports to Shared Downloads, Not Root-Only State
+- **Symptom**: HNHouji Experience WebUI reports a successful export to `/data/adb/houji-experience/report.json`, but the user cannot retrieve the file with a normal file manager.
+- **Root Cause**: The export reused the private state writer and its root-only directory/0600 permissions, confusing internal storage with a user-facing download.
+- **Prevention**: Export only the sanitized report to `/storage/emulated/0/Download/HNHouji/` using a unique filename and shared-storage-compatible creation permissions. Keep credentials, config and journal in private `/data/adb` storage. Verify the export completes before showing success; if shared storage is unavailable, report an error rather than silently falling back to private storage. Test destination, privacy, repeat exports and unavailable storage separately.

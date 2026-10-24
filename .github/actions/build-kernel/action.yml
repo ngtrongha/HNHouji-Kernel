@@ -93,7 +93,8 @@ runs:
             --config=fast \
             "${PAGE_SIZE_FLAGS[@]}" \
             --disk_cache=/home/runner/.cache/bazel \
-            //common:kernel_aarch64/Image
+            //common:kernel_aarch64/Image \
+            //common:kernel_aarch64/vmlinux
         fi
 
     - name: 'Verify Page Size in Generated .config'

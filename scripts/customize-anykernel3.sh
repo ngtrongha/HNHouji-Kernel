@@ -99,14 +99,37 @@ EOF
 
 # Xiaomi 14 (houji) notification & performance helper auto-install
 if [ -f "$home/houji-notification-helper.sh" ]; then
+  if [ -d /data/adb/modules/houji_experience ] || [ -f /data/adb/houji-experience/config.json ]; then
+    ui_print "  -> Houji Experience manages runtime settings; legacy helper skipped."
+  else
   ui_print "  -> Installing Xiaomi 14 performance & notification helper..."
   mkdir -p /data/adb/service.d
   tr -d '\r' < "$home/houji-notification-helper.sh" > /data/adb/service.d/houji-notification-helper.sh
   chmod 755 /data/adb/service.d/houji-notification-helper.sh
   ui_print "  -> Performance & notification helper installed successfully."
+  fi
 fi
 EOF
     echo "[+] Wired houji-notification-helper.sh into AnyKernel3"
+  fi
+
+  if [ "$KERNEL_VERSION" = "6.1" ]; then
+    cat << 'EOF' >> "$AK3_DIR/anykernel.sh"
+
+# Publish build identity only; this does not modify the kernel or its config.
+if [ -f "$home/houji-kernel.json" ]; then
+  if mkdir -p /data/adb/houji-kernel && cp "$home/houji-kernel.json" /data/adb/houji-kernel/manifest.json.tmp; then
+    chmod 600 /data/adb/houji-kernel/manifest.json.tmp
+    if mv /data/adb/houji-kernel/manifest.json.tmp /data/adb/houji-kernel/manifest.json; then
+      ui_print "  -> Houji kernel build metadata installed."
+    else
+      ui_print "  -> Metadata unavailable: module will remain diagnostic-only."
+    fi
+  else
+    ui_print "  -> Cannot write /data/adb metadata; module will remain diagnostic-only."
+  fi
+fi
+EOF
   fi
 
   cat << 'EOF' >> "$AK3_DIR/anykernel.sh"

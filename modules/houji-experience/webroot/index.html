@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>HNHouji Experience</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="masthead">
+      <div class="brand-mark" aria-hidden="true">h<span>。</span></div>
+      <div><p class="eyebrow">HNHOUJI / XIAOMI 14</p><h1>Experience</h1></div>
+      <span class="version">PREVIEW<br>0.1.2</span>
+    </header>
+    <div id="bridge-warning" class="notice" hidden>Mở WebUI từ KernelSU Manager để kết nối thiết bị. Nếu Manager không hỗ trợ bridge, dùng CLI houjictl. Trang này không dùng dữ liệu mô phỏng.</div>
+    <div id="notification" class="notice" role="status" aria-live="polite" hidden></div>
+    <nav class="tabs" role="tablist" aria-label="Chức năng">
+      <button role="tab" id="tab-overview" aria-controls="overview" aria-selected="true" data-tab="overview">Tổng quan</button>
+      <button role="tab" id="tab-apps" aria-controls="apps" aria-selected="false" data-tab="apps">Ứng dụng</button>
+      <button role="tab" id="tab-ai" aria-controls="ai" aria-selected="false" data-tab="ai">Trợ lý AI</button>
+      <button role="tab" id="tab-tools" aria-controls="tools" aria-selected="false" data-tab="tools">Tiện ích</button>
+      <button role="tab" id="tab-diagnostics" aria-controls="diagnostics" aria-selected="false" data-tab="diagnostics">Chẩn đoán</button>
+    </nav>
+    <main>
+      <section id="overview" role="tabpanel" aria-labelledby="tab-overview">
+        <article class="hero">
+          <div class="hero-top"><span class="pill"><i></i> CORE CỤC BỘ</span><span id="watcher-state" class="muted">Đang kết nối…</span></div>
+          <p class="hero-caption">Trạng thái hiện tại</p><h2 id="profile-name">Chưa kết nối</h2>
+          <p id="profile-detail">Đọc trạng thái thực từ thiết bị khi mở trong Manager.</p>
+          <div class="hero-actions"><button id="enable" class="primary">Bật tự động</button><button id="disable" class="secondary">Tắt &amp; hoàn tác</button></div>
+        </article>
+        <div class="metric-grid">
+          <article class="metric"><span>RAM khả dụng</span><strong id="ram-value">—</strong><small id="ram-total">Chưa có mẫu</small></article>
+          <article class="metric"><span>ZRAM đang dùng</span><strong id="zram-value">—</strong><small id="zram-detail">Không thay đổi cấu hình</small></article>
+          <article class="metric"><span>Nhiệt độ pin</span><strong id="temperature-value">—</strong><small>Không phải nhiệt độ SoC</small></article>
+          <article class="metric"><span>Dung lượng pin</span><strong id="battery-value">—</strong><small>Một mẫu chưa đủ đo pin chờ</small></article>
+        </div>
+        <article class="card"><div class="section-title"><span class="step">01</span><h3>Kernel · Hằng ngày</h3></div><p id="kernel-sync">Đang xác minh cấu hình và bản build kernel…</p><label class="check"><input id="kernel-tuning" type="checkbox"> Tự động áp dụng preset kernel Hằng ngày</label><div id="kernel-knobs" class="app-list"></div><p class="footnote">Áp dụng khi tự động đang bật và kernel khớp metadata. Bỏ qua mục không hỗ trợ; lưu giá trị gốc trước khi ghi. Hiệu quả cần đo trên máy.</p><div class="button-row"><button class="outline" data-open="apps">Quy tắc ứng dụng →</button><button class="text-button" data-open="ai">Cấu hình AI sau</button></div></article>
+        <article class="card"><div class="section-title"><span class="step">02</span><h3>Nhận xét từ dữ liệu hiện tại</h3></div><ul id="local-advice" class="advice"><li>Chưa có dữ liệu thiết bị.</li></ul><p class="footnote">Giữ nguyên HZ, WALT, thermal, kích thước/bộ nén ZRAM và driver vendor.</p></article>
+      </section>
+      <section id="apps" role="tabpanel" aria-labelledby="tab-apps" hidden>
+        <div class="page-heading"><p class="eyebrow">QUY TẮC TRÊN THIẾT BỊ</p><h2>Ứng dụng của bạn</h2><p>Chỉ áp dụng cho package bạn chọn, trên người dùng chính (user 0).</p></div>
+        <article class="card"><label for="app-search">Tìm package đã cài</label><div class="button-row"><input id="app-search" type="search" placeholder="Ví dụ: com.miHoYo…" autocomplete="off"><button id="load-apps" class="outline">Tải danh sách</button></div><p class="footnote">Game Android: chọn performance nếu được hỗ trợ. Game Windows/Linux: theo dõi tích hợp, không ép xung. Bảo vệ thông báo thêm ngoại lệ Doze; MILLET chỉ khi đọc được trạng thái.</p><div id="app-list" class="app-list"><p class="muted">Bấm “Tải danh sách” để đọc các ứng dụng đã cài.</p></div></article>
+      </section>
+      <section id="ai" role="tabpanel" aria-labelledby="tab-ai" hidden>
+        <div class="page-heading"><p class="eyebrow">TÙY CHỌN · CHỈ TƯ VẤN</p><h2>Thêm một góc nhìn</h2><p>Không có model trên máy. AI chỉ được gọi khi bạn yêu cầu, không điều khiển profile.</p></div>
+        <article class="card"><div class="section-title"><h3>Kết nối API</h3><span id="ai-state" class="tag">Chưa cấu hình</span></div>
+          <form id="api-form">
+            <div class="form-grid"><div><label for="api-style">Kiểu API</label><select id="api-style"><option value="chat_completions">Chat Completions</option><option value="responses">Responses</option></select></div><div><label for="api-auth">Xác thực</label><select id="api-auth"><option value="bearer">Bearer token / API key</option><option value="none">Không xác thực (proxy riêng)</option></select></div></div>
+            <label for="api-url">Base URL (bao gồm tiền tố API)</label><input id="api-url" type="url" placeholder="https://api.example.com/v1" required autocomplete="off">
+            <label for="api-model">Tên model</label><input id="api-model" type="text" placeholder="Nhập model do nhà cung cấp cung cấp" required maxlength="200" autocomplete="off">
+            <label for="api-key">API key / token</label><input id="api-key" type="password" placeholder="Nhập sau khi cài, không nằm trong ZIP" autocomplete="new-password" maxlength="4096"><small>Để trống để giữ khóa đã lưu cho cùng endpoint. Khóa không được đọc lại từ backend.</small>
+            <div class="form-grid"><div><label for="api-limit">Giới hạn token trả lời</label><input id="api-limit" type="number" min="64" max="2048" value="512" required></div><div><label for="api-timeout">Timeout (giây)</label><input id="api-timeout" type="number" min="5" max="60" value="30" required></div></div>
+            <label class="check"><input id="api-enabled" type="checkbox" checked> Cho phép gọi API khi bấm kiểm tra hoặc phân tích</label>
+            <div class="button-row"><button class="primary" type="submit">Lưu cấu hình</button><button id="api-test" type="button" class="outline">Kiểm tra kết nối</button></div>
+          </form>
+          <div class="button-row secondary-actions"><button id="api-disable" class="text-button">Tắt AI</button><button id="api-clear" class="text-button danger-text">Xóa cấu hình &amp; khóa</button></div>
+          <p class="footnote">Dùng endpoint trực tiếp hoặc proxy riêng. API có thể phát sinh phí và gửi dữ liệu tới nhà cung cấp; không tự retry. Máy root không bảo vệ khóa tuyệt đối trước tiến trình root khác.</p>
+        </article>
+        <article class="card"><h3>Phân tích theo yêu cầu</h3><label for="ai-prompt">Bạn muốn kiểm tra điều gì?</label><textarea id="ai-prompt" rows="3" maxlength="8192" placeholder="Ví dụ: Có dấu hiệu áp lực RAM trong mẫu hiện tại không?"></textarea><details><summary>Bản tóm tắt sẽ gửi kèm câu hỏi</summary><pre id="ai-preview">Mở trang để đọc bản tóm tắt.</pre></details><p class="footnote">Không gửi raw logcat, thông báo, tài liệu, serial/IMEI hoặc danh sách ứng dụng. Không cấu hình API vẫn nhận báo cáo cơ bản.</p><button id="ai-ask" class="primary">Phân tích</button><div id="ai-answer" class="answer" role="status" aria-live="polite" hidden></div></article>
+      </section>
+      <section id="tools" role="tabpanel" aria-labelledby="tab-tools" hidden>
+        <div class="page-heading"><p class="eyebrow">CHƠI GAME &amp; LÀM VIỆC</p><h2>Mở rộng trải nghiệm</h2><p>Thiết lập riêng trong từng ứng dụng. Module không tự cài APK, đổi thư viện GPU hoặc chạy container.</p></div>
+        <div class="tool-grid">
+          <article class="card"><span class="tool-icon">↗</span><h3>Winlator &amp; đồ họa</h3><p>Thử bộ Turnip/Box64 đi kèm Winlator 11.2. DXVK 3.x cần driver đủ tính năng Vulkan; giữ bộ cũ để đối chiếu.</p><button class="outline" data-guide="winlator">Nguồn &amp; hướng dẫn ↗</button></article>
+          <article class="card"><span class="tool-icon">⇄</span><h3>KDE Connect</h3><p>Kết nối PC, chia sẻ file và thông báo. Quyền clipboard/thông báo phụ thuộc Android.</p><button class="outline" data-guide="kde">Mở hướng dẫn ↗</button></article>
+          <article class="card"><span class="tool-icon">↓</span><h3>LocalSend</h3><p>Chuyển file qua mạng nội bộ giữa điện thoại và máy tính, không cần cloud.</p><button class="outline" data-guide="localsend">Mở hướng dẫn ↗</button></article>
+          <article class="card"><span class="tool-icon">⌁</span><h3>Tailscale</h3><p>Truy cập PC/NAS từ xa. Cân nhắc split tunneling và đo pin khi dùng exit node.</p><button class="outline" data-guide="tailscale">Mở hướng dẫn ↗</button></article>
+          <article class="card"><span class="tool-icon">&gt;_</span><h3>DroidSpaces</h3><p>Linux container chạy theo yêu cầu. Cần xác minh kernel đang flash có đủ tùy chọn.</p><button class="outline" data-guide="droidspaces">Mở hướng dẫn ↗</button></article>
+          <article class="card"><span class="tool-icon">◎</span><h3>NTSync &amp; ARR</h3><p>Có /dev/ntsync chưa chứng minh runner sử dụng nó. ARR cần hỗ trợ framework/Display HAL.</p><button class="outline" data-open="diagnostics">Kiểm tra khả năng →</button></article>
+        </div>
+      </section>
+      <section id="diagnostics" role="tabpanel" aria-labelledby="tab-diagnostics" hidden>
+        <div class="page-heading"><p class="eyebrow">MINH BẠCH &amp; KHÔI PHỤC</p><h2>Chẩn đoán</h2><p>Kiểm tra dữ liệu thực. Bản preview cần được kiểm chứng trên houji trước khi kết luận hiệu năng.</p></div>
+        <article class="card"><div class="button-row"><button id="doctor" class="primary">Kiểm tra hệ thống</button><button id="export" class="outline">Xuất báo cáo sạch</button></div><pre id="doctor-result">Chưa chạy kiểm tra.</pre></article>
+        <article class="card"><h3>Helper cũ &amp; hoàn tác</h3><p>Helper cũ được sao lưu trước khi vô hiệu hóa. Sau khi xử lý cần reboot; module không đoán giá trị stock của các thiết lập cũ không có journal.</p><div class="button-row"><button id="migrate" class="outline">Xử lý helper cũ</button><button id="restore" class="outline">Tắt &amp; khôi phục thay đổi</button></div><p class="footnote">Nếu HyperOS/người dùng đã đổi giá trị, module giữ nguyên thay đổi đó và báo xung đột. Kiểm tra pending_restore bên trên trước khi chấp nhận giữ giá trị bên ngoài.</p><button id="resolve-conflicts" class="text-button">Giữ thay đổi bên ngoài &amp; bỏ quyền hoàn tác các mục xung đột</button></article>
+      </section>
+    </main>
+    <footer><span>HNHouji Experience</span><span>Local first. AI optional.</span></footer>
+  </div>
+</body>
+</html>

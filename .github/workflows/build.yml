@@ -87,6 +87,8 @@ jobs:
     name: "${{ inputs.kernel_version }}.${{ inputs.sublevel }}-${{ inputs.android_version }}-${{ inputs.os_patch_level }} (${{ inputs.variant }})"
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    outputs:
+      kernel_artifact_name: ${{ steps.extract.outputs.file_name }}-AnyKernel3
     concurrency:
       # Must include every input that varies across matrix legs. Without
       # sublevel/variant/page_size, several distinct builds collide on one key
@@ -741,6 +743,23 @@ jobs:
           fi
         } > "$SUMMARY_FILE"
 
+    - name: Bind houji module metadata to the actual kernel artifact
+      if: inputs.kernel_version == '6.1'
+      shell: bash
+      env:
+        SOURCE_REVISION: ${{ github.sha }}
+      run: |
+        set -euo pipefail
+        VMLINUX=""
+        for candidate in kernel/bazel-bin/common/kernel_aarch64/vmlinux /home/runner/out/dist/vmlinux /home/runner/out/vmlinux; do
+          if [ -f "$candidate" ]; then VMLINUX="$candidate"; break; fi
+        done
+        if [ -z "$VMLINUX" ]; then
+          VMLINUX="$(find -H kernel/bazel-bin/common /home/runner/out -maxdepth 6 -name vmlinux -type f 2>/dev/null | head -n1 || true)"
+        fi
+        test -n "$VMLINUX" || { echo "Missing vmlinux: cannot identify the kernel build for Houji Experience" >&2; exit 1; }
+        python3 scripts/write-houji-kernel-manifest.py --image AnyKernel3/Image --vmlinux "$VMLINUX" --source-revision "$SOURCE_REVISION" --output AnyKernel3/houji-kernel.json
+
     - name: Configure and Brand AnyKernel3 for HNHouji
       shell: bash
       run: |
@@ -953,3 +972,12 @@ jobs:
         path: /tmp/build-summary-${{ env.SUMMARY_BASE }}.md
         if-no-files-found: warn
         compression-level: 9
+
+  build-houji-experience:
+    name: Build module paired with this houji kernel
+    needs: build-gki
+    if: inputs.version == 'android14-6.1' && inputs.page_size == '4k'
+    uses: ./.github/workflows/houji-experience.yml
+    with:
+      kernel_artifact_name: ${{ needs.build-gki.outputs.kernel_artifact_name }}
+      artifact_name: ${{ needs.build-gki.outputs.kernel_artifact_name }}-HoujiExperience
