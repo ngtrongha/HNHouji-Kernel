@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import struct
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -33,6 +34,28 @@ def image():
     return b"Linux version 6.1.177-android14-r11 (builder)\0" + b"IKCFG_ST" + gzip.compress(CONFIG) + b"IKCFG_ED" + BUILD_ID
 
 class KernelManifestTests(unittest.TestCase):
+    def test_cli_reads_mmap_files_and_rejects_a_real_mismatch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            raw, binary, output = root / "Image", root / "vmlinux", root / "kernel.json"
+            raw.write_bytes(image())
+            binary.write_bytes(elf())
+            command = [sys.executable, str(REPO / "scripts/write-houji-kernel-manifest.py"),
+                       "--image", str(raw), "--vmlinux", str(binary),
+                       "--source-revision", "f" * 40, "--output", str(output)]
+            result = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            metadata = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(metadata["build_id"], BUILD_ID.hex())
+            self.assertEqual(metadata["image_sha256"], hashlib.sha256(raw.read_bytes()).hexdigest())
+            raw.write_bytes(image().replace(BUILD_ID, b"x" * 20))
+            invalid_output = root / "invalid.json"
+            command[-1] = str(invalid_output)
+            result = subprocess.run(command, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("build ID is not present", result.stderr)
+            self.assertFalse(invalid_output.exists())
+
     def test_exact_config_image_and_main_vmlinux_id(self):
         # Raw Images can also contain KVM IDs; main vmlinux decides identity.
         raw = image() + b"GNU\0" + b"other-kvm-id"

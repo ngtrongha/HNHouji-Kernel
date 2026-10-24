@@ -66,7 +66,9 @@ def manifest(image, vmlinux, revision):
     if len(releases) != 1:
         raise ValueError("Image must contain one Android14 6.1 release")
     build_id = build_id_from_elf(vmlinux)
-    if bytes.fromhex(build_id) not in image:
+    # mmap iteration yields individual bytes; `needle in mmap` does not perform
+    # a multi-byte substring search. find() works for both mmap and bytes.
+    if image.find(bytes.fromhex(build_id)) < 0:
         raise ValueError("vmlinux build ID is not present in this Image")
     return {"schema": 1, "device": "houji", "module_contract": 1,
             "kernel_release": releases.pop().decode("ascii"),

@@ -206,3 +206,10 @@ Every time a CI build error or device runtime bug occurs, **you MUST add its sym
 - **Symptom**: Run `40103361955` fails at SUSFS application with `Hunk #1 FAILED at 32` and `fs/namespace.c.rej` on ACK 6.1.177.
 - **Root Cause**: The sublevel >=157 preparation unconditionally removes `#include <trace/hooks/blk.h>`, but latest SUSFS `27e0a0e42745` now requires that stock include in its namespace.c patch context. The other nine namespace hunks apply.
 - **Prevention**: Inspect only the namespace.c section of the actual selected SUSFS patch: preserve/restore the stock include when the patch expects it, remove it temporarily only for older patch context, and restore it idempotently afterward. Fail on ambiguous/missing context; do not ignore rejects or remove vendor hooks from the compiled kernel. Verify against the certified ACK source and current SUSFS patch before pushing.
+
+---
+
+## Rule 22: Search mmap Kernel Images with find(), Not Sequence Membership
+- **Symptom**: Run `40104094814` completes kernel compilation but fails when generating module metadata with `ValueError: vmlinux build ID is not present in this Image`.
+- **Root Cause**: The metadata CLI maps Image with Python `mmap`. Multi-byte `needle in mmap` checks individual sequence elements and returns false even when the complete build ID is present; earlier tests used plain bytes and missed this production-only path.
+- **Prevention**: Use `image.find(build_id_bytes) >= 0` for explicit substring search. Test the actual CLI with on-disk Image/vmlinux files so it exercises mmap, and retain a mismatched-image test that rejects invalid pairs without producing metadata. Never bypass the build ID check to make CI pass.
