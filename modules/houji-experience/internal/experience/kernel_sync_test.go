@@ -153,3 +153,91 @@ func TestBrokenPairedModuleMetadataNeverFallsBackToGeneric(t *testing.T) {
 		t.Fatal(s)
 	}
 }
+
+func pairedFixture(t *testing.T, a *App, spoof bool) KernelManifest {
+	t.Helper()
+	var metadata KernelManifest
+	must(t, readJSON(a.system("/data/adb/houji-kernel/manifest.json"), &metadata))
+	if spoof {
+		data := fixtureConfig + "CONFIG_KSU_SUSFS_SPOOF_UNAME=y\n"
+		writeRuntimeConfig(t, a, data)
+		metadata.ConfigSHA256 = digest([]byte(data))
+	}
+	must(t, atomicJSON(a.Paths.Module+"/kernel.json", metadata))
+	must(t, os.Remove(a.system("/data/adb/houji-kernel/manifest.json")))
+	return metadata
+}
+
+func TestPairedModuleUsesEmbeddedMetadataWithoutRecoverySidecar(t *testing.T) {
+	a, _ := fixture(t)
+	pairedFixture(t, a, false)
+	seedKnobs(t, a)
+	ctx := context.Background()
+	s := a.KernelSync(ctx)
+	if !s.Ready || !s.Paired || s.MetadataSource != "module" {
+		t.Fatal(s)
+	}
+	must(t, a.Step(ctx, "", false))
+	knobValue(t, a, "vm.page-cluster", "0")
+	knobValue(t, a, "f2fs:dm-42", "20")
+	if exists(a.system("/data/adb/houji-kernel/manifest.json")) {
+		t.Fatal("synthesized a kernel sidecar")
+	}
+}
+
+func TestPairedModuleAllowsSpoofedUnameOnlyWithMatchingLiveBuildAndConfig(t *testing.T) {
+	a, f := fixture(t)
+	metadata := pairedFixture(t, a, true)
+	seedKnobs(t, a)
+	f.release = "6.1.177-android14-8-g33591097-ab78788955"
+	ctx := context.Background()
+	s := a.KernelSync(ctx)
+	if !s.Ready || !s.Paired || !s.UnameDiffers || s.ExpectedRelease != metadata.KernelRelease || s.KernelRelease != f.release {
+		t.Fatal(s)
+	}
+	must(t, a.Step(ctx, "", false))
+	knobValue(t, a, "vm.page-cluster", "0")
+	metadata.BuildID = strings.Repeat("c", 40)
+	must(t, atomicJSON(a.Paths.Module+"/kernel.json", metadata))
+	if s = a.KernelSync(ctx); s.Ready || s.State != "build-mismatch" {
+		t.Fatal(s)
+	}
+	must(t, a.Step(ctx, "", false))
+	knobValue(t, a, "vm.page-cluster", "3")
+}
+
+func TestUnexplainedUnameDifferenceRemainsDiagnosticOnly(t *testing.T) {
+	a, f := fixture(t)
+	pairedFixture(t, a, false)
+	seedKnobs(t, a)
+	f.release = "6.1.177-android14-unexpected"
+	if s := a.KernelSync(context.Background()); s.Ready || s.State != "release-mismatch" {
+		t.Fatal(s)
+	}
+	must(t, a.Step(context.Background(), "", false))
+	knobValue(t, a, "vm.page-cluster", "3")
+}
+
+func TestPairedModuleIgnoresSidecarForAnOlderBuild(t *testing.T) {
+	a, _ := fixture(t)
+	metadata := pairedFixture(t, a, false)
+	metadata.BuildID = strings.Repeat("c", 40)
+	metadata.ConfigSHA256 = strings.Repeat("d", 64)
+	must(t, atomicJSON(a.system("/data/adb/houji-kernel/manifest.json"), metadata))
+	if s := a.KernelSync(context.Background()); !s.Ready || s.MetadataSource != "module" {
+		t.Fatal(s)
+	}
+}
+
+func TestMissingSidecarNeverAllowsWrongPairedConfig(t *testing.T) {
+	a, _ := fixture(t)
+	metadata := pairedFixture(t, a, true)
+	seedKnobs(t, a)
+	metadata.ConfigSHA256 = strings.Repeat("d", 64)
+	must(t, atomicJSON(a.Paths.Module+"/kernel.json", metadata))
+	if s := a.KernelSync(context.Background()); s.Ready || s.State != "build-mismatch" {
+		t.Fatal(s)
+	}
+	must(t, a.Step(context.Background(), "", false))
+	knobValue(t, a, "vm.page-cluster", "3")
+}

@@ -11,10 +11,10 @@ import (
 )
 
 type fakeAndroid struct {
-	game, millet, power, activity, window, user, failWrite, failRead string
-	doze                                                             map[string]bool
-	writes                                                           int
-	commands                                                         []string
+	game, millet, power, activity, window, user, failWrite, failRead, release string
+	doze                                                                      map[string]bool
+	writes                                                                    int
+	commands                                                                  []string
 }
 
 func (f *fakeAndroid) Run(_ context.Context, name string, args ...string) (string, error) {
@@ -35,6 +35,9 @@ func (f *fakeAndroid) Run(_ context.Context, name string, args ...string) (strin
 		}
 		return "16", nil
 	case "uname":
+		if f.release != "" {
+			return f.release, nil
+		}
 		return "6.1.177-android14-r11", nil
 	case "id":
 		return "0", nil

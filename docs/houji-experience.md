@@ -27,9 +27,12 @@ nếu kernel cung cấp, và đặt `min_fsync_blocks=20` đúng `/data` F2FS n�
 Mỗi mục có journal/đọc lại/hoàn tác và trạng thái trong WebUI. Không đổi
 xung/thermal/WALT/HZ hay kích thước/bộ nén ZRAM. Hiệu quả cần đo trên houji.
 
-Kernel cũ chưa có `/data/adb/houji-kernel/manifest.json`, thiếu IKCONFIG/build ID
-hoặc không khớp sẽ chỉ chẩn đoán. Cần kernel được đóng gói bởi workflow mới để
-bật tinh chỉnh; module không tự dựng metadata từ runtime.
+Từ **0.1.3**, module paired dùng `kernel.json` nhúng trong ZIP để kiểm tra GNU
+build ID và toàn bộ hash IKCONFIG thực, nên thiếu sidecar trong `/data/adb`
+không chặn đúng cặp nữa. Uname khác metadata chỉ được chấp nhận khi các hash/ID
+khớp và cấu hình bật SUSFS SPOOF_UNAME; báo cáo hiện cả hai release. ZIP generic
+vẫn cần sidecar. Metadata thiếu/sai, config hoặc build ID không khớp đều chỉ
+chẩn đoán; không tự dựng metadata từ runtime.
 
 Nếu helper cũ được AnyKernel3 cài sẵn, installer sao lưu/vô hiệu hóa tên thực
 thi của helper; cần reboot. Các thiết lập Android cũ không có bản gốc lưu sẵn

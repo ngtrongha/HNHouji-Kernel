@@ -1,4 +1,4 @@
-# HNHouji Experience 0.1.2-preview
+# HNHouji Experience 0.1.3-preview
 
 Module KernelSU độc lập cho Xiaomi 14 **houji**, arm64, GKI 6.1 và user 0.
 WebUI mở trong Manager; CLI là phương án dự phòng. Không cần metamodule,
@@ -78,7 +78,10 @@ Trước khi áp dụng quy tắc, module đối chiếu:
 - Kernel release thuộc baseline `6.1.177-android14-*` của r11.
 - IKCONFIG thực từ `/proc/config.gz`: HZ 250, page size 4K, ZRAM/ZSMALLOC dạng
   module; SHA-256 của toàn bộ cấu hình phải khớp metadata.
-- GNU build ID thực từ `/sys/kernel/notes` và release phải khớp metadata.
+- GNU build ID thực từ `/sys/kernel/notes` phải khớp metadata. Tên uname khác
+  metadata chỉ được chấp nhận khi build ID/toàn bộ hash cấu hình đều khớp và
+  cấu hình đó bật `CONFIG_KSU_SUSFS_SPOOF_UNAME=y`. Báo cáo giữ cả tên uname và
+  release trong metadata, không sửa hay tắt tính năng SUSFS.
 
 Workflow kernel xuất `houji-kernel.json` từ chính `Image` và `vmlinux` vừa build.
 AnyKernel3 cài sidecar vào `/data/adb/houji-kernel/manifest.json`. Sidecar ghi
@@ -92,7 +95,10 @@ artifact từ job kernel của cùng run, kiểm tra hash Image rồi build back
 WebUI và ZIP. Không dùng artifact từ run/release mới nhất bên ngoài.
 
 ZIP chứa `kernel.json` khóa release/config/build ID/hash Image của bản kernel
-đó. Nếu cài nhầm ZIP của kernel khác, module chỉ chẩn đoán. Tên ZIP gồm biến
+đó. Từ 0.1.3, bản paired xác minh trực tiếp bằng metadata nhúng này, không
+phụ thuộc việc recovery ghi được sidecar vào `/data/adb`. Metadata nhúng lỗi
+không được chuyển ngầm sang generic. Sidecar của build cũ không thay thế nhận
+dạng từ metadata nhúng và kernel đang chạy. Nếu cài nhầm ZIP, chỉ chẩn đoán. Tên ZIP gồm biến
 thể kernel và phần đầu hash Image; artifact có tên `<kernel>-AnyKernel3-HoujiExperience`.
 Mỗi biến thể/root có ZIP riêng, không ghi đè nhau.
 
@@ -101,11 +107,11 @@ metadata nhúng/checksum trước khi publish. Thiếu module hoặc sai cặp l
 release thất bại. Module vẫn cài bằng KSU Manager, không tự cài khi flash kernel.
 Các họ kernel khác và page size 16K không chạy job module houji này.
 
-**Kernel cũ chưa có sidecar sẽ chỉ chẩn đoán**, kể cả release nhìn giống nhau.
-Cần build/flash kernel có metadata từ workflow đã cập nhật rồi cài module và
-reboot. Không tự tạo manifest từ runtime để vượt kiểm tra. Thiếu config/build
-ID, metadata sai hoặc kernel khác baseline: hoàn tác các entry đang sở hữu,
-chuyển Quan sát; chẩn đoán/AI/báo cáo vẫn dùng được. AnyKernel3 mới bỏ qua cài
+**ZIP generic không nhúng metadata vẫn cần sidecar đã cài**, kể cả release nhìn
+giống nhau. Với ZIP paired đúng bản kernel, không cần flash lại chỉ vì thiếu
+sidecar; cập nhật module rồi reboot. Không tự tạo manifest từ runtime để vượt
+kiểm tra. Thiếu config/build ID, metadata sai hoặc kernel khác baseline: hoàn
+tác các entry đang sở hữu, chuyển Quan sát; chẩn đoán/AI/báo cáo vẫn dùng được. AnyKernel3 mới bỏ qua cài
 helper cũ khi đã có module hoặc cấu hình module để tránh cùng ghi tham số.
 
 ## AI tùy chọn, cấu hình sau cài đặt
@@ -227,7 +233,7 @@ binary thuần Go CGO=0 dù cross-compile thành công. Không build bằng `net
 Go runtime được link vào binary; license BSD kèm ZIP. Không có dependency Go
 bên thứ ba hoặc HTTP server chạy nền.
 
-Đầu ra `dist/HNHouji-Experience-0.1.2-preview.zip`, checksum và manifest; không
+Đầu ra `dist/HNHouji-Experience-0.1.3-preview.zip`, checksum và manifest; không
 đưa source test, node_modules, model, key hay state vào ZIP. Build metadata nằm
 trong manifest. Build riêng tạo ZIP generic; khi được workflow kernel gọi,
 tạo ZIP có hậu tố bản kernel/hash và metadata nhúng. Workflow module không tự

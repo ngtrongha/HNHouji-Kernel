@@ -220,3 +220,10 @@ Every time a CI build error or device runtime bug occurs, **you MUST add its sym
 - **Symptom**: Local end-to-end verification of successful run `40105396610` fails with HTTP 404 because `gh run download` requests the run from `WildKernels/GKI_KernelSU_SUSFS` instead of `ngtrongha/HNHouji-Kernel`.
 - **Root Cause**: The collector lists artifacts using `GITHUB_REPOSITORY`, but its download command omits `--repo`, allowing gh's configured upstream/default repository to select a different repository.
 - **Prevention**: Pass `--repo GITHUB_REPOSITORY` explicitly on every collector download, keeping repository, run ID and exact artifact name together. Test with a conflicting GH_REPO/default and verify real kernel/module artifacts from one completed run before release.
+
+---
+
+## Rule 24: Verify Paired Modules from Embedded Metadata and Account for Configured Uname Spoofing
+- **Symptom**: Device report `HNHouji-report-20261024-154538` shows `manifest-missing`, all knobs waiting, and `paired:false`, although its full IKCONFIG SHA-256 and GNU build ID exactly match the successful CI kernel. Its reported uname differs from the compiled Image release.
+- **Root Cause**: The module requires an external `/data/adb/houji-kernel/manifest.json` before inspecting its packaged `kernel.json`, so an absent recovery sidecar blocks even the correct paired module and misreports its paired status. Exact uname comparison also ignores that this verified kernel enables `CONFIG_KSU_SUSFS_SPOOF_UNAME=y`. The report does not establish why the recovery sidecar is absent.
+- **Prevention**: Prefer the paired module's CI-generated embedded metadata; require the live GNU build ID, full IKCONFIG hash and baseline config policy to match it. Never manufacture metadata from runtime. Allow a different reported uname only when these identity checks pass and the matched config enables SPOOF_UNAME; surface both releases. Generic modules still require an installed sidecar, and invalid packaged metadata must never fall back to generic mode. Test missing/stale sidecars, wrong identity, invalid packages and spoofed/non-spoofed uname separately.

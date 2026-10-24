@@ -24,15 +24,18 @@ type KernelManifest struct {
 }
 
 type KernelSync struct {
-	Ready          bool              `json:"ready"`
-	State          string            `json:"state"`
-	Message        string            `json:"message"`
-	KernelRelease  string            `json:"kernel_release"`
-	ConfigSHA256   string            `json:"config_sha256,omitempty"`
-	BuildID        string            `json:"build_id,omitempty"`
-	SourceRevision string            `json:"source_revision,omitempty"`
-	Features       map[string]string `json:"features,omitempty"`
-	Paired         bool              `json:"paired"`
+	Ready           bool              `json:"ready"`
+	State           string            `json:"state"`
+	Message         string            `json:"message"`
+	KernelRelease   string            `json:"kernel_release"`
+	ConfigSHA256    string            `json:"config_sha256,omitempty"`
+	BuildID         string            `json:"build_id,omitempty"`
+	SourceRevision  string            `json:"source_revision,omitempty"`
+	Features        map[string]string `json:"features,omitempty"`
+	Paired          bool              `json:"paired"`
+	MetadataSource  string            `json:"metadata_source,omitempty"`
+	ExpectedRelease string            `json:"expected_kernel_release,omitempty"`
+	UnameDiffers    bool              `json:"uname_differs,omitempty"`
 }
 
 func configValues(data []byte) map[string]string {
@@ -97,6 +100,13 @@ func (a *App) KernelSync(ctx context.Context) KernelSync {
 		return s
 	}
 	s.KernelRelease, _ = a.run(ctx, "uname", "-r")
+	var packaged KernelManifest
+	packageErr := readJSON(a.Paths.Module+"/kernel.json", &packaged)
+	s.Paired = !os.IsNotExist(packageErr)
+	if s.Paired {
+		s.MetadataSource = "module"
+		s.ExpectedRelease = packaged.KernelRelease
+	}
 	if !strings.HasPrefix(s.KernelRelease, "6.1.177-android14-") {
 		s.State = "family-mismatch"
 		s.Message = "Kernel khác baseline android14-6.1.177; không áp dụng quy tắc ứng dụng."
@@ -125,7 +135,7 @@ func (a *App) KernelSync(ctx context.Context) KernelSync {
 	s.ConfigSHA256 = digest(data)
 	values := configValues(data)
 	s.Features = map[string]string{}
-	for _, key := range []string{"CONFIG_HZ", "CONFIG_ARM64_4K_PAGES", "CONFIG_ZRAM", "CONFIG_ZSMALLOC", "CONFIG_LRU_GEN", "CONFIG_TRANSPARENT_HUGEPAGE", "CONFIG_NTSYNC", "CONFIG_WIREGUARD", "CONFIG_CIFS", "CONFIG_DEBUG_INFO_BTF"} {
+	for _, key := range []string{"CONFIG_HZ", "CONFIG_ARM64_4K_PAGES", "CONFIG_ZRAM", "CONFIG_ZSMALLOC", "CONFIG_LRU_GEN", "CONFIG_TRANSPARENT_HUGEPAGE", "CONFIG_NTSYNC", "CONFIG_WIREGUARD", "CONFIG_CIFS", "CONFIG_DEBUG_INFO_BTF", "CONFIG_KSU_SUSFS_SPOOF_UNAME"} {
 		v := values[key]
 		if v == "" {
 			v = "unknown"
@@ -152,43 +162,62 @@ func (a *App) KernelSync(ctx context.Context) KernelSync {
 		return s
 	}
 	var m KernelManifest
-	e = readJSON(a.system("/data/adb/houji-kernel/manifest.json"), &m)
-	if os.IsNotExist(e) {
-		s.State = "manifest-missing"
-		s.Message = "Kernel chưa có metadata đồng bộ. Cần bản kernel được đóng gói kèm manifest; module chỉ chẩn đoán."
-		return s
-	}
-	if e != nil || !validKernelManifest(m) {
-		s.State = "manifest-invalid"
-		s.Message = "Metadata kernel thiếu hoặc không tương thích với module; chỉ chẩn đoán."
-		return s
-	}
-	s.SourceRevision = m.SourceRevision
-	if m.KernelRelease != s.KernelRelease || m.ConfigSHA256 != s.ConfigSHA256 || m.BuildID != s.BuildID {
-		s.State = "build-mismatch"
-		s.Message = "Release, IKCONFIG hoặc build ID không khớp bản kernel đã đóng gói. Cần đúng cặp kernel/metadata; chỉ chẩn đoán."
-		return s
-	}
-	var expected KernelManifest
-	e = readJSON(a.Paths.Module+"/kernel.json", &expected)
-	if !os.IsNotExist(e) {
-		s.Paired = true
-		if e != nil || !validKernelManifest(expected) {
+	var sidecar KernelManifest
+	sidecarErr := readJSON(a.system("/data/adb/houji-kernel/manifest.json"), &sidecar)
+	if s.Paired {
+		if packageErr != nil || !validKernelManifest(packaged) {
 			s.State = "package-manifest-invalid"
 			s.Message = "Metadata đi kèm ZIP module không hợp lệ; chỉ chẩn đoán."
 			return s
 		}
-		if expected.KernelRelease != m.KernelRelease || expected.ConfigSHA256 != m.ConfigSHA256 || expected.BuildID != m.BuildID || expected.ImageSHA256 != m.ImageSHA256 {
-			s.State = "package-build-mismatch"
-			s.Message = "ZIP module dành cho bản kernel khác. Cài đúng ZIP module đi cùng bản kernel; chỉ chẩn đoán."
+		m = packaged
+	} else {
+		if os.IsNotExist(sidecarErr) {
+			s.State = "manifest-missing"
+			s.Message = "Không có metadata nhúng hoặc metadata kernel đã cài; chỉ chẩn đoán. Cần ZIP module đúng cặp."
 			return s
 		}
+		if sidecarErr != nil || !validKernelManifest(sidecar) {
+			s.State = "manifest-invalid"
+			s.Message = "Metadata kernel thiếu hoặc không tương thích với module; chỉ chẩn đoán."
+			return s
+		}
+		m = sidecar
+		s.MetadataSource = "installed-sidecar"
+	}
+	s.ExpectedRelease = m.KernelRelease
+	s.SourceRevision = m.SourceRevision
+	if !strings.HasPrefix(m.KernelRelease, "6.1.177-android14-") {
+		s.State = "family-mismatch"
+		s.Message = "Metadata dành cho kernel khác baseline houji 6.1.177; chỉ chẩn đoán."
+		return s
+	}
+	if m.ConfigSHA256 != s.ConfigSHA256 || m.BuildID != s.BuildID {
+		s.State = "build-mismatch"
+		s.Message = "IKCONFIG hoặc build ID không khớp bản kernel dành cho module. Cần đúng cặp kernel/metadata; chỉ chẩn đoán."
+		return s
+	}
+	// A stale/missing recovery sidecar is not the identity authority for a
+	// paired module. A sidecar describing this same live build must agree on Image.
+	if s.Paired && sidecarErr == nil && validKernelManifest(sidecar) && sidecar.BuildID == s.BuildID && sidecar.ConfigSHA256 == s.ConfigSHA256 && sidecar.ImageSHA256 != m.ImageSHA256 {
+		s.State = "package-build-mismatch"
+		s.Message = "Metadata Image của module và kernel đã cài mâu thuẫn; chỉ chẩn đoán."
+		return s
+	}
+	s.UnameDiffers = m.KernelRelease != s.KernelRelease
+	if s.UnameDiffers && values["CONFIG_KSU_SUSFS_SPOOF_UNAME"] != "y" {
+		s.State = "release-mismatch"
+		s.Message = "Tên uname khác metadata và kernel không bật SPOOF_UNAME; chỉ chẩn đoán."
+		return s
 	}
 	s.Ready = true
 	s.State = "matched"
 	s.Message = "Release, hash IKCONFIG và GNU build ID khớp metadata bản build. Không thay thế kiểm chứng KMI/boot trên thiết bị."
 	if s.Paired {
 		s.Message = "Module đi cùng đúng bản kernel: release, IKCONFIG và build ID đã khớp. Cần kiểm chứng hiệu năng trên thiết bị."
+	}
+	if s.UnameDiffers {
+		s.Message = "Build ID và toàn bộ IKCONFIG khớp metadata. Tên uname khác metadata, kernel có bật SUSFS SPOOF_UNAME; xác minh theo build ID/cấu hình."
 	}
 	return s
 }
