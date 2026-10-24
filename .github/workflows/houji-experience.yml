@@ -23,6 +23,9 @@ on:
       - '.github/workflows/build.yml'
       - '.github/workflows/main.yml'
       - '.github/actions/build-kernel/action.yml'
+      - '.github/actions/susfs-patches/action.yml'
+      - '.github/actions/susfs-revert-patches/action.yml'
+      - '.github/scripts/susfs_namespace_header.py'
   push:
     paths:
       - 'modules/houji-experience/**'
@@ -33,6 +36,9 @@ on:
       - '.github/workflows/build.yml'
       - '.github/workflows/main.yml'
       - '.github/actions/build-kernel/action.yml'
+      - '.github/actions/susfs-patches/action.yml'
+      - '.github/actions/susfs-revert-patches/action.yml'
+      - '.github/scripts/susfs_namespace_header.py'
 
 permissions:
   contents: read

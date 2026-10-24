@@ -98,7 +98,9 @@ runs:
         fi
         if [ "${{ inputs.sublevel }}" -ge "157" ]; then
           echo "Applying namespace.c Android 14 6.1 Fake Patch"
-          sed -i '/^#include <trace\/hooks\/blk.h>$/d' fs/namespace.c
+          # Latest SUSFS now expects the stock hook include in its context;
+          # older patches require it temporarily absent. Inspect this patch.
+          python3 "${{ github.workspace }}/.github/scripts/susfs_namespace_header.py" apply fs/namespace.c 50_add_susfs_in_gki-${{ inputs.version }}.patch
           echo "Applying super.c Android 14 6.1 Fake Patch"
           sed -i '/^#include <trace\/hooks\/fs.h>$/,+1 d' fs/super.c
         fi

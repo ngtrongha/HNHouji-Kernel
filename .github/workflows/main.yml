@@ -67,14 +67,14 @@ on:
         type: boolean
         default: false
       commit_mode:
-        description: "latest = branch tips, verified = audited pins, update = build latest then promote verified pins on success"
+        description: "latest (default) = branch tips, verified = audited pins, update = build latest then promote verified pins on success"
         required: false
         type: choice
         options:
-          - verified
           - latest
+          - verified
           - update
-        default: verified
+        default: latest
       root_flavor:
         description: "Root Flavor"
         type: choice
@@ -205,12 +205,8 @@ jobs:
           # Commit resolution mode. 'latest' (default) resolves branch tips at
           # run time via git ls-remote. 'verified' uses the audited pins below for
           # NoMount, kernelsu/resukisu roots, and SUSFS; KernelSU-Next stays latest.
-          # Scheduled (nightly) runs use latest by default.
-          if [ "${{ github.event_name }}" = "schedule" ]; then
-            COMMIT_MODE="${{ inputs.commit_mode || 'latest' }}"
-          else
-            COMMIT_MODE="${{ inputs.commit_mode || 'verified' }}"
-          fi
+          # Manual and scheduled runs both default to latest (user preference).
+          COMMIT_MODE="${{ inputs.commit_mode || 'latest' }}"
           echo "commit_mode=${COMMIT_MODE}"
 
           retry() {

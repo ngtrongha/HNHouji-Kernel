@@ -120,11 +120,11 @@ Android 15 / Linux 6.6 LTS:
 gh workflow run main.yml \
   -R YOUR_USERNAME/GKI_KernelSU_SUSFS \
   --ref main \
-  -f release_type=Action \
+  -f release_type=CI \
   -f kernel_build_version=6.6.x-android15 \
   -f os_patch_level=lts \
   -f brand_name=MyKernel \
-  -f commit_mode=verified \
+  -f commit_mode=latest \
   -f root_flavor=KernelSU \
   -f use_cache=false
 ```
@@ -135,11 +135,11 @@ Android 14 / Linux 6.1.118:
 gh workflow run main.yml \
   -R YOUR_USERNAME/GKI_KernelSU_SUSFS \
   --ref main \
-  -f release_type=Action \
+  -f release_type=CI \
   -f kernel_build_version=6.1.x-android14 \
   -f os_patch_level=118 \
   -f brand_name=MyKernel \
-  -f commit_mode=verified \
+  -f commit_mode=latest \
   -f root_flavor=KernelSU \
   -f use_cache=false
 ```

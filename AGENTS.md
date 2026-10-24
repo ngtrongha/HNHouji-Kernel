@@ -1,5 +1,9 @@
 # Xiaomi 14 (houji) GKI 6.1 Build & Runtime Error Prevention Rules
 
+## Build mode preference (user instruction, 2026-10-24)
+- Always default component resolution and Codex-triggered builds to `commit_mode=latest`; do not silently substitute `verified`. An explicit later user choice may override this preference.
+- This preference tracks root/SUSFS/NoMount component branch tips. Preserve the houji ACK baseline and display/vendor compatibility shields below; do not infer permission to merge upstream kernel code or remove these shields from the commit-mode choice.
+
 ## Rule 0: Mandatory Error Ledger Update
 Every time a CI build error or device runtime bug occurs, **you MUST add its symptom, root cause, and prevention rule to this `AGENTS.md` file before pushing the fix** so the same failure is never repeated.
 
@@ -195,3 +199,10 @@ Every time a CI build error or device runtime bug occurs, **you MUST add its sym
 - **Symptom**: HNHouji Experience WebUI reports a successful export to `/data/adb/houji-experience/report.json`, but the user cannot retrieve the file with a normal file manager.
 - **Root Cause**: The export reused the private state writer and its root-only directory/0600 permissions, confusing internal storage with a user-facing download.
 - **Prevention**: Export only the sanitized report to `/storage/emulated/0/Download/HNHouji/` using a unique filename and shared-storage-compatible creation permissions. Keep credentials, config and journal in private `/data/adb` storage. Verify the export completes before showing success; if shared storage is unavailable, report an error rather than silently falling back to private storage. Test destination, privacy, repeat exports and unavailable storage separately.
+
+---
+
+## Rule 21: Match namespace.c Include Preparation to the Selected SUSFS Patch
+- **Symptom**: Run `40103361955` fails at SUSFS application with `Hunk #1 FAILED at 32` and `fs/namespace.c.rej` on ACK 6.1.177.
+- **Root Cause**: The sublevel >=157 preparation unconditionally removes `#include <trace/hooks/blk.h>`, but latest SUSFS `27e0a0e42745` now requires that stock include in its namespace.c patch context. The other nine namespace hunks apply.
+- **Prevention**: Inspect only the namespace.c section of the actual selected SUSFS patch: preserve/restore the stock include when the patch expects it, remove it temporarily only for older patch context, and restore it idempotently afterward. Fail on ambiguous/missing context; do not ignore rejects or remove vendor hooks from the compiled kernel. Verify against the certified ACK source and current SUSFS patch before pushing.
