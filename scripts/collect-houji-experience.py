@@ -28,7 +28,8 @@ def zip_json(archive, name):
     return json.loads(archive.read(name))
 
 def download_artifact(run_id, name, destination):
-    subprocess.run(["gh", "run", "download", str(run_id), "--name", name, "--dir", str(destination)], check=True)
+    # Never let gh infer the upstream/default repository in a fork checkout.
+    subprocess.run(["gh", "run", "download", str(run_id), "--repo", os.environ["GITHUB_REPOSITORY"], "--name", name, "--dir", str(destination)], check=True)
 
 def list_kernel_artifacts(run_id):
     repository = os.environ["GITHUB_REPOSITORY"]

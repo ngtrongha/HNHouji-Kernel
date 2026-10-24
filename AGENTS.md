@@ -213,3 +213,10 @@ Every time a CI build error or device runtime bug occurs, **you MUST add its sym
 - **Symptom**: Run `40104094814` completes kernel compilation but fails when generating module metadata with `ValueError: vmlinux build ID is not present in this Image`.
 - **Root Cause**: The metadata CLI maps Image with Python `mmap`. Multi-byte `needle in mmap` checks individual sequence elements and returns false even when the complete build ID is present; earlier tests used plain bytes and missed this production-only path.
 - **Prevention**: Use `image.find(build_id_bytes) >= 0` for explicit substring search. Test the actual CLI with on-disk Image/vmlinux files so it exercises mmap, and retain a mismatched-image test that rejects invalid pairs without producing metadata. Never bypass the build ID check to make CI pass.
+
+---
+
+## Rule 23: Specify the Fork Repository When Downloading Paired Artifacts
+- **Symptom**: Local end-to-end verification of successful run `40105396610` fails with HTTP 404 because `gh run download` requests the run from `WildKernels/GKI_KernelSU_SUSFS` instead of `ngtrongha/HNHouji-Kernel`.
+- **Root Cause**: The collector lists artifacts using `GITHUB_REPOSITORY`, but its download command omits `--repo`, allowing gh's configured upstream/default repository to select a different repository.
+- **Prevention**: Pass `--repo GITHUB_REPOSITORY` explicitly on every collector download, keeping repository, run ID and exact artifact name together. Test with a conflicting GH_REPO/default and verify real kernel/module artifacts from one completed run before release.

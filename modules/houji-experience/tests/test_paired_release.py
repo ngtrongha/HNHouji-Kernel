@@ -1,12 +1,14 @@
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import shutil
 import struct
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 REPO = Path(__file__).resolve().parents[3]
 
@@ -20,6 +22,15 @@ pack = load("paired_pack", REPO / "modules/houji-experience/tools/package.py")
 release = load("paired_release", REPO / "scripts/collect-houji-experience.py")
 
 class PairedReleaseTests(unittest.TestCase):
+    def test_download_uses_run_repository_even_with_upstream_gh_default(self):
+        with patch.dict(os.environ, {"GITHUB_REPOSITORY":"ngtrongha/HNHouji-Kernel", "GH_REPO":"WildKernels/GKI_KernelSU_SUSFS"}):
+            with patch.object(release.subprocess, "run") as run:
+                release.download_artifact(88, "exact-artifact", Path("destination"))
+        args = run.call_args.args[0]
+        self.assertIn("--repo", args)
+        self.assertEqual(args[args.index("--repo")+1], "ngtrongha/HNHouji-Kernel")
+        self.assertIn("exact-artifact", args)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
