@@ -7,7 +7,9 @@ import (
 	"time"
 )
 
-const maxAIBytes = 2 * 1024 * 1024
+// Byte budgets are independent of provider token budgets and private config limits.
+const maxAIResponseBytes = 8 * 1024 * 1024
+const maxAIStateBytes = 64 * 1024 * 1024
 
 type ChatMessage struct {
 	Role    string `json:"role"`

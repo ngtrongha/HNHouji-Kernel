@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -225,9 +226,26 @@ func (a *App) requestAI(ctx context.Context, prompt string, test bool, instructi
 		a.logEvent("ai-" + code)
 		return fallback(code)
 	}
-	b, e := io.ReadAll(io.LimitReader(res.Body, maxAIBytes+1))
-	if e != nil || len(b) > maxAIBytes {
-		return fallback("response-too-large")
+	b, e := io.ReadAll(io.LimitReader(res.Body, maxAIResponseBytes+1))
+	if len(b) > maxAIResponseBytes {
+		result := fallback("response-too-large")
+		result["response_bytes_read"] = len(b)
+		result["response_limit_bytes"] = maxAIResponseBytes
+		return result
+	}
+	if e != nil {
+		// Reading can fail after successful headers, even with a tiny body.
+		// Never label a broken connection/timeout as an oversized answer or
+		// accept a partial body, even when its prefix happens to be valid JSON.
+		code := "response-read-failed"
+		var timeout net.Error
+		if errors.Is(e, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
+			code = "cancelled"
+		} else if errors.Is(e, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) || (errors.As(e, &timeout) && timeout.Timeout()) {
+			code = "timeout"
+		}
+		a.logEvent("ai-" + code)
+		return fallback(code)
 	}
 	var parsed struct {
 		Model             string `json:"model"`

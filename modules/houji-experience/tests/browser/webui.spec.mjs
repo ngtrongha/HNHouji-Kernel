@@ -21,6 +21,7 @@ async function mockBridge(page) {
       switch (req.action) {
         case 'ai_job_start': {
           let result=req.mode==='test'?{source:'api',answer:'Kết nối hoạt động.',usage:{},elapsed_ms:12}:window.truncatedAI?{source:'local-rules',ai_error:'response-truncated',report,usage:{completion_tokens:512},elapsed_ms:20,finish_reason:'length',model:'routed-model'}:ai.enabled?{source:'api',answer:'## Nhận định\n**Bằng chứng** đủ đọc.\n- <img src=x onerror="window.pwned=true"> $(reboot)\n\n| Chọn | Kiểm tra |\n| --- | --- |\n| daily | đo lặp |',usage:{total_tokens:50},finish_reason:'stop',model:'actual-model',elapsed_ms:15}:{source:'local-rules',ai_error:'not-configured',report};
+          if(window.bodyError&&req.mode==='ask')result={source:'local-rules',ai_error:window.bodyError,report};
           if(req.mode==='daily')result={at:'2026-10-25T13:00:00Z',legend:[{id:'app-01',package:'com.example.game'}],result:{source:'api',answer:'app-01: <img src=x onerror="window.pwned=true"> xem xét daily',usage:{total_tokens:100},finish_reason:'stop',model:'actual-model',elapsed_ms:20}};
           if(window.proposalTest&&req.mode==='ask')result={source:'api',answer:'## Đề xuất\nSo sánh profile Hằng ngày.',proposal:{id:'plan-01',changes:[{kind:'app_profile',app_id:'app-01',package:'com.example.game',before:'automatic',after:'daily',reason:'Lựa chọn để đối chiếu trước/sau.'}]}};
           job={id:'job-'+window.requests.length,mode:req.mode,state:'queued',started:new Date().toISOString(),result};data={...job,result:undefined};break;
@@ -93,6 +94,17 @@ test('AI truncation explains fallback and exposes model and finish status', asyn
   await expect(page.locator('#ai-answer')).toContainText('routed-model');
   expect(await page.evaluate(()=>window.requests.filter(x=>x.req.action==='ai_job_start'&&x.req.mode==='ask').length)).toBe(1);
 });
+
+for (const [code, message] of [['response-too-large', 'vượt 8 MiB'], ['response-read-failed', 'Kết nối bị ngắt'], ['timeout', 'quá thời gian chờ']]) {
+  test(`AI body failure ${code} is explained without an automatic retry`, async ({page})=>{
+    await mockBridge(page);await page.goto(url);await page.evaluate(value=>{window.bodyError=value;},code);
+    await page.getByRole('tab',{name:'Trợ lý AI',exact:true}).click();await page.locator('#ai-ask').click();
+    await expect(page.locator('#ai-answer')).toContainText(message);
+    await expect(page.locator('#ai-ask')).toBeEnabled();
+    expect(await page.evaluate(()=>window.requests.filter(x=>x.req.action==='ai_job_start').length)).toBe(1);
+    expect(await page.evaluate(()=>window.requests.some(x=>x.req.action==='ai_proposal_apply'))).toBeFalsy();
+  });
+}
 
 test('AI proposals require explicit apply and daily automatic application is opt in',async({page})=>{
   await mockBridge(page);await page.goto(url);await page.evaluate(()=>{window.proposalTest=true;});

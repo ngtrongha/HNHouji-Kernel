@@ -13,6 +13,17 @@ on:
         required: false
         default: HNHouji-Experience-preview
   workflow_dispatch:
+    inputs:
+      kernel_run_id:
+        description: 'Existing successful kernel run ID to package a paired module (blank = generic)'
+        type: string
+        required: false
+        default: ''
+      kernel_artifact_name:
+        description: 'Exact AnyKernel3 artifact in kernel_run_id (both inputs required for pairing)'
+        type: string
+        required: false
+        default: ''
   pull_request:
     paths:
       - 'modules/houji-experience/**'
@@ -56,11 +67,28 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Download this kernel's build metadata
-        if: inputs.kernel_artifact_name != '' && inputs.kernel_artifact_name != null
+        if: (inputs.kernel_run_id == '' || inputs.kernel_run_id == null) && inputs.kernel_artifact_name != '' && inputs.kernel_artifact_name != null
         uses: actions/download-artifact@v7
         with:
           name: ${{ inputs.kernel_artifact_name }}
           path: ${{ runner.temp }}/houji-kernel-artifact
+      - name: Download selected existing kernel for paired module
+        if: inputs.kernel_run_id != '' && inputs.kernel_run_id != null
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          KERNEL_RUN_ID: ${{ inputs.kernel_run_id }}
+          KERNEL_ARTIFACT: ${{ inputs.kernel_artifact_name }}
+          KERNEL_DEST: ${{ runner.temp }}/houji-kernel-artifact
+        run: |
+          set -euo pipefail
+          if [ -z "$KERNEL_RUN_ID" ] && [ -z "$KERNEL_ARTIFACT" ]; then
+            exit 0
+          fi
+          [[ "$KERNEL_RUN_ID" =~ ^[0-9]+$ ]] || { echo 'Invalid/missing kernel run ID'; exit 1; }
+          [ -n "$KERNEL_ARTIFACT" ] || { echo 'Missing exact kernel artifact name'; exit 1; }
+          [ "$(gh run view "$KERNEL_RUN_ID" --repo "$GH_REPO" --json conclusion --jq .conclusion)" = success ] || { echo 'Kernel run must have succeeded'; exit 1; }
+          gh run download "$KERNEL_RUN_ID" --repo "$GH_REPO" --name "$KERNEL_ARTIFACT" --dir "$KERNEL_DEST"
       - uses: actions/setup-go@v6
         with:
           go-version: '1.27.3'

@@ -1,4 +1,4 @@
-# HNHouji Experience 0.4.0-preview
+# HNHouji Experience 0.4.1-preview
 
 Module KernelSU độc lập cho Xiaomi 14 **houji**, arm64, GKI 6.1 và user 0.
 WebUI mở trong Manager; CLI là phương án dự phòng. Không cần metamodule,
@@ -182,11 +182,14 @@ Proxy riêng có thể chọn không xác thực, nhưng nên có token nếu pu
 - Markdown được dựng bằng DOM text: mục, danh sách, chữ đậm, bảng, code dạng
   văn bản. Không dựng HTML hoặc thực thi nội dung model. Metadata token/model
   được gấp riêng. Cấu hình API nằm trong mục thu gọn, ưu tiên không gian đọc.
-- HTTP response có giới hạn bộ nhớ riêng 2 MiB, file kết quả đọc tối đa 16 MiB
+- HTTP response có giới hạn bộ nhớ riêng 8 MiB, file kết quả đọc tối đa 64 MiB
   để chứa JSON đã escape;
   đây là giới hạn bytes để bảo vệ bộ nhớ, không phải trần token. Kiểm thử dùng
   API mô phỏng, vẫn cần kiểm chứng native worker và cảm giác UI trong Manager
   trên houji. Không gửi khóa API thật vào kiểm thử hay repo.
+- Từ 0.4.1, `response-too-large` chỉ dùng khi thực sự đọc vượt 8 MiB.
+  Timeout, hủy và lỗi đọc kết nối có thông báo riêng; lỗi cũ có thể đã bị gắn
+  nhầm thành quá dung lượng. Không nhận nội dung dở dang, không tự thử lại.
 
 Tham khảo: [OpenRouter: tham số và giá trị mặc định khi không gửi](https://openrouter.ai/docs/api_reference/parameters).
 
@@ -331,6 +334,13 @@ không biết bị từ chối, không có API thực thi shell tùy ý.
 
 ## Build và kiểm thử
 
+Theo lựa chọn của người dùng, build thực hiện trên GitHub Actions; không build
+local và không cần chờ CI kết thúc. Workflow **Houji Experience** chạy kiểm thử
+và build Android/WebUI. Khi chạy thủ công, nhập cả `kernel_run_id` của lượt
+kernel đã thành công và `kernel_artifact_name` chính xác để đóng gói module
+khớp kernel đó. Để trống cả hai tạo bản generic. Quy trình vẫn kiểm tra Image
+SHA-256 và metadata trước khi đóng gói. Các lệnh dưới đây là tham chiếu cho CI.
+
 Cần Go 1.27.3, Node 22+, pnpm 11.25.0, Python 3 và Android NDK r28b
 (`28.1.13356709`). Dependency WebUI khóa trong pnpm-lock.yaml.
 
@@ -362,7 +372,7 @@ binary thuần Go CGO=0 dù cross-compile thành công. Không build bằng `net
 Go runtime được link vào binary; license BSD kèm ZIP. Không có dependency Go
 bên thứ ba hoặc HTTP server chạy nền.
 
-Đầu ra `dist/HNHouji-Experience-0.4.0-preview.zip`, checksum và manifest; không
+Đầu ra `dist/HNHouji-Experience-0.4.1-preview.zip`, checksum và manifest; không
 đưa source test, node_modules, model, key hay state vào ZIP. Build metadata nằm
 trong manifest. Build riêng tạo ZIP generic; khi được workflow kernel gọi,
 tạo ZIP có hậu tố bản kernel/hash và metadata nhúng. Workflow module không tự

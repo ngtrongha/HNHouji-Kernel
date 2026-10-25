@@ -168,6 +168,10 @@ function showAnswer(result: any, target = "ai-answer") {
   answer.className="ai-response";answer.replaceChildren();
   // Never render provider output as HTML, Markdown HTML, JS or shell commands.
   const errors: Record<string,string> = {
+    "response-too-large":"Phản hồi API vượt 8 MiB dữ liệu, gồm cả metadata/reasoning nếu nhà cung cấp gửi. Đây là giới hạn bộ nhớ, không phải token. Chọn ngân sách đầu ra nhỏ hơn hoặc model khác rồi thử thủ công.",
+    "response-read-failed":"Kết nối bị ngắt hoặc lỗi trong lúc nhận phản hồi API. Chưa nhận được kết quả đầy đủ; không tự gửi lại. Kiểm tra mạng rồi thử thủ công.",
+    "timeout":"API quá thời gian chờ. Có thể tăng thời gian chờ trong cấu hình API rồi thử thủ công; không tự gửi lại.",
+    "cancelled":"Yêu cầu đã bị hủy; không tự gửi lại API.",
     "response-truncated":"API đã hết giới hạn token; phần trả lời dở dang được bỏ qua. Có thể tăng giới hạn token hoặc chọn model khác rồi thử thủ công.",
     "response-incomplete":"API trả lời chưa hoàn tất; đang dùng báo cáo cục bộ.",
     "response-empty":"API không có nội dung trả lời cuối; model reasoning có thể đã dùng hết ngân sách token.",

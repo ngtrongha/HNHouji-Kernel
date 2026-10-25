@@ -42,7 +42,7 @@ def package(output: Path, kernel_manifest: Path | None = None, kernel_artifact: 
     suffix = ""
     if kernel is not None:
         suffix = f"-for-{kernel_artifact.removesuffix('-AnyKernel3')}-{kernel['image_sha256'][:12]}"
-    target = output / f"HNHouji-Experience-0.4.0-preview{suffix}.zip"
+    target = output / f"HNHouji-Experience-0.4.1-preview{suffix}.zip"
     checksums = {}
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         payloads = [(path.relative_to(ROOT).as_posix(), path.read_bytes()) for path in files if path.is_file()]

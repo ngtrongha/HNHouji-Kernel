@@ -35,11 +35,11 @@ func readAIJSON(path string, value any) error {
 		return err
 	}
 	defer f.Close()
-	b, err := io.ReadAll(io.LimitReader(f, 8*maxAIBytes+1))
+	b, err := io.ReadAll(io.LimitReader(f, maxAIStateBytes+1))
 	if err != nil {
 		return err
 	}
-	if len(b) > 8*maxAIBytes {
+	if len(b) > maxAIStateBytes {
 		return errors.New("ai-state-too-large")
 	}
 	return json.Unmarshal(b, value)
