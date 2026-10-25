@@ -10,6 +10,7 @@ async function mockBridge(page) {
     let ai = { configured: false, enabled: false };
     let learning = {enabled:true,adaptive:true,daily_ai:false,hour:21,timezone:'Asia/Ho_Chi_Minh',charging_only:false};
     let job={state:'idle'};
+    let application={};
     const report = { source: 'local-rules', metrics: { MemTotal_kib: 8000000, MemAvailable_kib: 3000000, zram_original_bytes: 1200000000, zram_allocated_bytes: 480000000, battery_percent: 80, battery_celsius: 35 }, advice: ['Một mẫu chưa đủ kết luận pin chờ.'], ntsync: false, legacy_conflict: false };
     window.ksu = { exec(command, options, callback) {
       const encoded = JSON.parse(options).env.HOUJI_REQUEST_B64;
@@ -21,10 +22,14 @@ async function mockBridge(page) {
         case 'ai_job_start': {
           let result=req.mode==='test'?{source:'api',answer:'Kết nối hoạt động.',usage:{},elapsed_ms:12}:window.truncatedAI?{source:'local-rules',ai_error:'response-truncated',report,usage:{completion_tokens:512},elapsed_ms:20,finish_reason:'length',model:'routed-model'}:ai.enabled?{source:'api',answer:'## Nhận định\n**Bằng chứng** đủ đọc.\n- <img src=x onerror="window.pwned=true"> $(reboot)\n\n| Chọn | Kiểm tra |\n| --- | --- |\n| daily | đo lặp |',usage:{total_tokens:50},finish_reason:'stop',model:'actual-model',elapsed_ms:15}:{source:'local-rules',ai_error:'not-configured',report};
           if(req.mode==='daily')result={at:'2026-10-25T13:00:00Z',legend:[{id:'app-01',package:'com.example.game'}],result:{source:'api',answer:'app-01: <img src=x onerror="window.pwned=true"> xem xét daily',usage:{total_tokens:100},finish_reason:'stop',model:'actual-model',elapsed_ms:20}};
+          if(window.proposalTest&&req.mode==='ask')result={source:'api',answer:'## Đề xuất\nSo sánh profile Hằng ngày.',proposal:{id:'plan-01',changes:[{kind:'app_profile',app_id:'app-01',package:'com.example.game',before:'automatic',after:'daily',reason:'Lựa chọn để đối chiếu trước/sau.'}]}};
           job={id:'job-'+window.requests.length,mode:req.mode,state:'queued',started:new Date().toISOString(),result};data={...job,result:undefined};break;
         }
         case 'ai_job_status': if(job.state==='queued'||job.state==='running')job.state=window.holdAI?'running':'completed';data=job;break;
         case 'ai_job_cancel': job.state='cancelled';data=job;break;
+        case 'ai_application_status': data=application;break;
+        case 'ai_proposal_apply': config.apps['com.example.game']='daily';application={proposal_id:req.proposal_id,status:'applied',automatic:false,at:'2026-10-25T13:00:00Z',changes:[{kind:'app_profile'}]};data=application;break;
+        case 'ai_application_undo': delete config.apps['com.example.game'];application={...application,status:'undone'};data=application;break;
         case 'learning_status': data={config:learning,history:{days:{'2026-10-25':{observed_seconds:600,active_seconds:300,samples:10,hours:Array.from({length:24},(_,h)=>({active_seconds:h===20?300:0}))}},through:'2026-10-25T13:00:00Z'},apps:[{id:'app-01',package:'com.example.game',seconds:300,days:1,sessions:2}],daily:{}};break;
         case 'learning_preview': data={apps:[{id:'app-01',seconds:300}],observed_seconds:600};break;
         case 'learning_save': learning=req.learning;break;
@@ -87,6 +92,20 @@ test('AI truncation explains fallback and exposes model and finish status', asyn
   await expect(page.locator('#ai-answer')).toContainText('Kết thúc: length');
   await expect(page.locator('#ai-answer')).toContainText('routed-model');
   expect(await page.evaluate(()=>window.requests.filter(x=>x.req.action==='ai_job_start'&&x.req.mode==='ask').length)).toBe(1);
+});
+
+test('AI proposals require explicit apply and daily automatic application is opt in',async({page})=>{
+  await mockBridge(page);await page.goto(url);await page.evaluate(()=>{window.proposalTest=true;});
+  await page.getByRole('tab',{name:'Thói quen',exact:true}).click();await expect(page.locator('#learning-auto-apply')).not.toBeChecked();
+  await page.locator('#learning-daily').check();await page.locator('#learning-auto-apply').check();await page.getByRole('button',{name:'Lưu cài đặt thói quen',exact:true}).click();
+  await expect.poll(()=>page.evaluate(()=>window.requests.some(x=>x.req.action==='learning_save'&&x.req.learning.auto_apply===true))).toBeTruthy();
+  await page.getByRole('tab',{name:'Trợ lý AI',exact:true}).click();await page.locator('#ai-ask').click();
+  await expect(page.locator('#ai-answer .proposal-change')).toContainText('Tự chọn → Hằng ngày');
+  expect(await page.evaluate(()=>window.requests.some(x=>x.req.action==='ai_proposal_apply'))).toBeFalsy();
+  await page.locator('#ai-answer .proposal-apply').click();
+  await expect(page.locator('#ai-last-application')).toContainText('Đã lưu cài đặt');await expect(page.locator('#ai-undo')).toBeEnabled();
+  const sent=await page.evaluate(()=>window.requests.find(x=>x.req.action==='ai_proposal_apply').req);expect(sent).toEqual({action:'ai_proposal_apply',proposal_id:'plan-01'});
+  await page.locator('#ai-undo').click();await expect(page.locator('#ai-last-application')).toContainText('Đã hoàn tác');
 });
 
 test('background AI shows loading, stays navigable, cancels and accepts provider token budgets',async({page})=>{

@@ -8,19 +8,20 @@ import (
 )
 
 type Request struct {
-	Action    string          `json:"action"`
-	Package   string          `json:"package,omitempty"`
-	Profile   string          `json:"profile,omitempty"`
-	Guide     string          `json:"guide,omitempty"`
-	Protected bool            `json:"protected,omitempty"`
-	Enabled   bool            `json:"enabled,omitempty"`
-	AI        *AIConfig       `json:"ai,omitempty"`
-	Prompt    string          `json:"prompt,omitempty"`
-	Learning  *LearningConfig `json:"learning,omitempty"`
-	Mode      string          `json:"mode,omitempty"`
-	JobID     string          `json:"job_id,omitempty"`
-	Goal      string          `json:"goal,omitempty"`
-	Messages  []ChatMessage   `json:"messages,omitempty"`
+	Action     string          `json:"action"`
+	Package    string          `json:"package,omitempty"`
+	Profile    string          `json:"profile,omitempty"`
+	Guide      string          `json:"guide,omitempty"`
+	Protected  bool            `json:"protected,omitempty"`
+	Enabled    bool            `json:"enabled,omitempty"`
+	AI         *AIConfig       `json:"ai,omitempty"`
+	Prompt     string          `json:"prompt,omitempty"`
+	Learning   *LearningConfig `json:"learning,omitempty"`
+	Mode       string          `json:"mode,omitempty"`
+	JobID      string          `json:"job_id,omitempty"`
+	Goal       string          `json:"goal,omitempty"`
+	Messages   []ChatMessage   `json:"messages,omitempty"`
+	ProposalID string          `json:"proposal_id,omitempty"`
 }
 type Response struct {
 	OK    bool   `json:"ok"`
@@ -38,6 +39,14 @@ func (a *App) Dispatch(ctx context.Context, r Request) Response {
 
 func (a *App) dispatch(ctx context.Context, r Request) (any, error) {
 	switch r.Action {
+	case "ai_proposal_apply":
+		return a.applyProposal(ctx, r.ProposalID, false)
+	case "ai_application_status":
+		return a.ApplicationStatus(), nil
+	case "ai_application_undo":
+		return a.undoAI(ctx)
+	case "ai_application_acknowledge":
+		return a.acknowledgeAIApplication()
 	case "ai_job_start":
 		return a.startAIJob(r, a.launchAIWorker)
 	case "ai_job_status":
@@ -197,6 +206,9 @@ func (a *App) dispatch(ctx context.Context, r Request) (any, error) {
 	case "app_set", "app_remove", "protect_set":
 		if !validPackage(r.Package) {
 			return nil, errors.New("invalid package")
+		}
+		if r.Action != "protect_set" {
+			delete(c.AIProfiles, r.Package)
 		}
 		if r.Action == "app_remove" {
 			delete(c.Apps, r.Package)

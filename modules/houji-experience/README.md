@@ -1,4 +1,4 @@
-# HNHouji Experience 0.3.0-preview
+# HNHouji Experience 0.4.0-preview
 
 Module KernelSU độc lập cho Xiaomi 14 **houji**, arm64, GKI 6.1 và user 0.
 WebUI mở trong Manager; CLI là phương án dự phòng. Không cần metamodule,
@@ -68,8 +68,8 @@ và dừng thử lại trong watcher tới khi bạn đổi cấu hình/bật l�
 toán tự học hay bằng chứng preset cải thiện mọi workload; cần đo lặp lại.
 
 Giữ nguyên HZ, WALT, CPU/GPU governor/xung, thermal, LMKD, PSI, watermark,
-swappiness, THP/MGLRU, bộ nén/kích thước ZRAM và driver vendor. AI chỉ tư vấn,
-không được phép ghi tham số kernel.
+swappiness, THP/MGLRU, bộ nén/kích thước ZRAM và driver vendor. AI chỉ có thể đề
+xuất bật/tắt preset hiện có qua bộ áp dụng kiểm tra; không tạo giá trị kernel mới.
 
 ## Đồng bộ cấu hình và bản kernel
 
@@ -148,7 +148,8 @@ Proxy riêng có thể chọn không xác thực, nhưng nên có token nếu pu
 - Hỏi tiếp dùng tối đa 6 tin nhắn gần nhất, tổng nội dung tối đa 32 KiB trong RAM
   phiên WebUI. Không dùng browser storage. Cuộc trao đổi mới xóa ngữ cảnh phiên
   và kết quả tác vụ thủ công gần nhất. Kết quả AI là văn bản, không được chạy như lệnh
-  hoặc tự áp dụng. Khi API lỗi, hiện báo cáo cơ bản cùng mã lỗi.
+  hoặc chạy tự do. Từ 0.4.0, các actions có cấu trúc được kiểm tra để bạn bấm áp
+  dụng hoặc chạy theo tùy chọn tự áp dụng lịch riêng. Khi API lỗi, hiện báo cáo cơ bản.
 - Không ghi nội dung hỏi/đáp vào log. Phân tích hằng ngày gần nhất được lưu riêng
   trên máy để bạn xem lại, gồm token usage và bảng đối chiếu app-ID. Không ước lượng tiền.
 - Phản hồi bị cắt (`length`/`incomplete`) không được dùng làm lời khuyên; hiển thị
@@ -189,6 +190,49 @@ Proxy riêng có thể chọn không xác thực, nhưng nên có token nếu pu
 
 Tham khảo: [OpenRouter: tham số và giá trị mặc định khi không gửi](https://openrouter.ai/docs/api_reference/parameters).
 
+## Áp dụng đề xuất AI (0.4.0)
+
+- AI trả Markdown trong `answer` và danh sách `actions` JSON. Không bật chế độ
+  JSON riêng của provider, nên endpoint vẫn dùng giao thức cũ. Nếu model không
+  trả đúng cấu trúc, bạn vẫn đọc được tư vấn nhưng không có thay đổi được áp dụng.
+  Phản hồi bị cắt/lỗi không được dùng để tạo kế hoạch. Không gọi lại API để sửa JSON.
+- Bảng **Các thay đổi được đề xuất** hiển thị ứng dụng/preset, giá trị trước/sau
+  và lý do; bấm **Áp dụng đề xuất** để module kiểm tra lại rồi lưu cấu hình.
+  Chỉ hai hành động được hỗ trợ: profile ứng dụng (`automatic`, `daily`,
+  `native-game`, `windows-game`, `linux`) và bật/tắt preset kernel Hằng ngày.
+  Không nhận shell, đường dẫn, giá trị sysctl, quyền, bảo vệ thông báo hoặc API key
+  từ AI. `automatic` bỏ quy tắc riêng; Windows/Linux vẫn chỉ theo dõi tích hợp.
+- **Thói quen → Tự áp dụng đề xuất hợp lệ sau mỗi lượt AI chạy theo lịch** mặc
+  định **tắt**. Khi bật, chỉ lượt lịch (`automatic=true`) mới được tự áp dụng,
+  không áp dụng sau khi bạn bấm phân tích thủ công. Cần module/AI/ghi nhận/lịch
+  cùng bật, ít nhất 2 ngày có mẫu, 30 mẫu và 1800 giây được quan sát. Đây là
+  ngưỡng chính sách thử nghiệm, không chứng minh cấu hình tối ưu.
+- Tự động giữ quy tắc ứng dụng bạn tự đặt. Quy tắc do AI áp dụng được đánh dấu
+  riêng để lượt sau có thể điều chỉnh; đặt lại bằng UI/CLI sẽ bỏ dấu sở hữu AI.
+  Preset kernel nằm trong phạm vi tùy chọn tự áp dụng; tắt tùy chọn không tự
+  hoàn tác lượt đã lưu. Tăng chế độ game/bật preset tự động còn cần mẫu PSI và
+  Android thermal hiện tại đọc được, PSI FULL <2% và thermal status <3; giữ
+  nguyên cơ chế bảo vệ của hãng. Chỉ chọn performance nếu GameManager thực sự hỗ trợ.
+- Kế hoạch có ID ngẫu nhiên, hết hạn sau 24 giờ/reboot, khóa với cấu hình lúc
+  phân tích. Kernel phải xác minh khớp metadata, user 0, không có helper cũ/
+  yêu cầu reboot hoặc lỗi journal/runtime đang cần xử lý. Kernel preset phải có
+  ít nhất một mục hỗ trợ khi bật. Thay đổi cài đặt trong khi AI chạy/reset lịch
+  sử vô hiệu hóa snapshot cũ. Mọi kiểm tra xong mới lưu `config.json` một lần
+  nguyên tử; watcher áp dụng cấu hình theo foreground/guard, không ép boost tức thời.
+- **Lượt áp dụng AI gần nhất → Hoàn tác** khôi phục đúng các trường đã đổi,
+  giữ các thiết lập không liên quan. Khi trường đó đã đổi bên ngoài, hoàn tác
+  báo xung đột và giữ giá trị bên ngoài. Runtime game/kernel vẫn dùng journal
+  so sánh trước khi ghi; không đoán stock. Chỉ giữ một lượt hoàn tác thành công
+  gần nhất; một lần áp dụng thất bại không xóa lượt hoàn tác thành công trước.
+- `ai-proposal.json` và `ai-application.json` riêng 0600 lưu kế hoạch/biên nhận;
+  không vào export công khai. Biên nhận pending/undo-pending cho phép xác minh
+  sau gián đoạn mà không gọi lại AI/áp lại. Nếu không xác minh được, UI có lựa
+  chọn giữ cấu hình hiện tại và bỏ lượt hoàn tác đó. Reset lịch sử xóa kế hoạch
+  chưa áp dụng, giữ biên nhận cần cho undo; gỡ module xóa cả hai sau hoàn tác runtime.
+  Nút Apply chỉ gửi ID, không nhận lại danh sách hành động từ browser.
+- Kiểm thử dùng API và Android mô phỏng: cần kiểm chứng chu kỳ lịch/áp dụng/
+  hoàn tác trên houji trước khi kết luận về trải nghiệm hoặc mức tiêu thụ tài nguyên.
+
 ## Học thói quen và phân tích hằng ngày (0.2.0)
 
 - **Thói quen** có công tắc ghi nhận, tự chọn profile, lịch AI, giờ địa phương,
@@ -216,8 +260,8 @@ Tham khảo: [OpenRouter: tham số và giá trị mặc định khi không gử
   **trước** gọi mạng, kể cả API lỗi/reboot không tự thử lại trong ngày đó. Phân
   tích thủ công vẫn là thao tác tường minh và cũng đánh dấu đã phân tích hôm nay.
   Lịch chạy trong worker riêng, không chặn vòng đổi profile/hoàn tác.
-- AI chỉ tạo văn bản đề xuất. Bạn xem rồi đặt profile tại **Ứng dụng**, hoặc
-  bật/tắt các điều khiển hiện có. Không có bộ thực thi lệnh hay tự áp dụng AI.
+- AI tạo tư vấn và đề xuất có cấu trúc. Bạn có thể bấm áp dụng, tự đặt tại
+  **Ứng dụng**, hoặc bật tự áp dụng theo lịch (xem phần 0.4.0). Không có bộ thực thi lệnh.
   Chưa đủ 2 ngày có mẫu thì chỉ tiếp tục đo; chưa có dữ liệu thực không kết luận
   hiệu năng hoặc tiết kiệm pin. Cần kiểm chứng overhead và hành vi trên houji.
 - Tắt ghi nhận dừng thu thập; xóa lịch sử vô hiệu hóa cả bản nhớ trong watcher
@@ -318,7 +362,7 @@ binary thuần Go CGO=0 dù cross-compile thành công. Không build bằng `net
 Go runtime được link vào binary; license BSD kèm ZIP. Không có dependency Go
 bên thứ ba hoặc HTTP server chạy nền.
 
-Đầu ra `dist/HNHouji-Experience-0.3.0-preview.zip`, checksum và manifest; không
+Đầu ra `dist/HNHouji-Experience-0.4.0-preview.zip`, checksum và manifest; không
 đưa source test, node_modules, model, key hay state vào ZIP. Build metadata nằm
 trong manifest. Build riêng tạo ZIP generic; khi được workflow kernel gọi,
 tạo ZIP có hậu tố bản kernel/hash và metadata nhúng. Workflow module không tự

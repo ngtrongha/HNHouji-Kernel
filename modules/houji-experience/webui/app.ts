@@ -23,6 +23,7 @@ let aiClock:ReturnType<typeof setInterval>|undefined;
 let aiStarting=false;
 let renderedJob="";
 let conversation:{role:string;content:string}[]=[];
+let lastApplication:any={};
 const labels: Record<string, string> = { observe: "Quan sát", daily: "Hằng ngày", "native-game": "Game Android", "windows-game": "Game Windows", linux: "Linux", sleep: "Màn hình nghỉ" };
 const reasons: Record<string, string> = { "daily-default": "Hằng ngày mặc định: áp dụng preset kernel có hỗ trợ và các quy tắc ứng dụng đã chọn.", disabled: "Tự động đang tắt; không áp dụng tinh chỉnh.", "rules-local": "Hoạt động bằng quy tắc cục bộ, không gọi AI.", "integration-observe": "Theo dõi ứng dụng; cấu hình đồ họa/container nằm trong ứng dụng đó.", "game-mode-unsupported": "GameManager chưa hỗ trợ performance cho ứng dụng này.", "legacy-conflict": "Helper cũ xuất hiện. Xử lý trong Chẩn đoán rồi reboot.", "restore-conflict": "Có thay đổi bên ngoài hoặc trạng thái chưa khôi phục được. Xem Chẩn đoán.", "reboot-required": "Reboot sau khi xử lý helper cũ trước khi bật tự động.", "owner-user-only": "Chỉ quản lý người dùng chính (user 0).", "watcher-offline": "Watcher chưa chạy. Reboot sau cài đặt và kiểm tra Manager.", "not-started": "Chưa khởi động watcher." };
 reasons["adaptive-learned-game"] = "Đã đủ lịch sử trong khung giờ này; chọn Game Android cho ứng dụng hỗ trợ. Có thể đặt quy tắc riêng trong Ứng dụng.";
@@ -81,7 +82,7 @@ function schedule() { if (timer) clearTimeout(timer); if (document.hidden || !av
 
 async function act(request: RPC, message?: string) { const data = await rpc(request); if (message) notify(message); await refresh(); return data; }
 function bind(id: string, callback: () => Promise<void>) {
-  $(id).addEventListener("click", async () => { const button = $<HTMLButtonElement>(id); button.disabled = true; try { await callback(); } catch (error) { failure(error); } finally { button.disabled = ["ai-ask","api-test","learning-analyze","ai-new-chat"].includes(id) && (!!aiJob || aiStarting); } });
+  $(id).addEventListener("click", async () => { const button = $<HTMLButtonElement>(id); button.disabled = true; try { await callback(); } catch (error) { failure(error); } finally { button.disabled = id==="ai-undo"?lastApplication.status!=="applied":["ai-ask","api-test","learning-analyze","ai-new-chat"].includes(id) && (!!aiJob || aiStarting); } });
 }
 
 function showTab(id: string) {
@@ -108,6 +109,7 @@ async function loadAI() {
   $<HTMLDetailsElement>("api-settings").open = !status.configured;
   const evidence=await rpc<any>({action:"ai_preview"});text("ai-preview",pretty(evidence));
   text("ai-data-summary",`Mẫu hiện tại + ${evidence.days_with_samples || 0} ngày có mẫu · ${evidence.usage?.samples || 0} mẫu lịch sử · Khoảng thiếu dữ liệu được giữ là chưa biết.`);
+  await loadApplication();
   await resumeAI();
 }
 
@@ -178,9 +180,41 @@ function showAnswer(result: any, target = "ai-answer") {
   const content = result.source === "api" ? result.answer : `Báo cáo cơ bản · ${errors[result.ai_error] || result.ai_error || "không dùng AI"}\n\n${(result.report?.advice || []).join("\n\n")}`;
   const head=document.createElement("div");head.className="response-heading";const title=document.createElement("strong");title.textContent=result.source==="api"?"Phân tích AI":"Nhận xét cục bộ";const model=document.createElement("span");model.textContent=result.model || (result.source==="api"?"Model không cung cấp tên":"Quy tắc cục bộ");head.append(title,model);answer.append(head);
   const body=document.createElement("div");body.className="response-body";markdown(body,content);answer.append(body);
+  renderProposal(answer,result);
   if(result.app_legend?.length){const details=document.createElement("details");const summary=document.createElement("summary");summary.textContent="Đối chiếu ứng dụng · Chỉ trên máy";const list=document.createElement("ul");for(const item of result.app_legend){const li=document.createElement("li");li.textContent=`${item.id} · ${item.package}`;list.append(li);}details.append(summary,list);answer.append(details);}
   if(result.usage){const details=document.createElement("details");const summary=document.createElement("summary");const usage=result.usage;summary.textContent=`${((result.elapsed_ms || 0)/1000).toLocaleString("vi-VN",{maximumFractionDigits:1})} giây · ${usage.total_tokens ?? ((usage.prompt_tokens ?? usage.input_tokens ?? 0)+(usage.completion_tokens ?? usage.output_tokens ?? 0))} token`;const info=document.createElement("p");info.textContent=`Model: ${result.model || "không cung cấp"} · Kết thúc: ${result.finish_reason || "không cung cấp"} · Đầu vào: ${usage.prompt_tokens ?? usage.input_tokens ?? "—"} · Đầu ra: ${usage.completion_tokens ?? usage.output_tokens ?? "—"}${usage.reasoning_tokens!==undefined?` · Reasoning: ${usage.reasoning_tokens}`:""}`;details.append(summary,info);answer.append(details);}
 }
+
+function proposalMessage(code:string):string {
+  if(code==="proposal-pressure")return "Đang có áp lực bộ nhớ hoặc trạng thái nhiệt cao; chưa tự tăng chế độ game/bật preset.";
+  if(code==="proposal-pressure-unknown")return "Chưa đọc đủ PSI/trạng thái nhiệt để tự tăng chế độ game/bật preset.";
+  if(code==="proposal-kernel-unsupported")return "Preset chưa có mục hỗ trợ trên thiết bị hiện tại; chưa bật.";
+  const messages:Record<string,string>={"proposal-format-invalid":"AI chưa trả đề xuất đúng cấu trúc; chưa thay đổi cài đặt.","proposal-no-valid-actions":"Không có đề xuất hợp lệ để tự áp dụng.","proposal-settings-changed":"Cài đặt đã đổi sau lúc AI phân tích. Phân tích lại để lấy đề xuất mới.","proposal-not-current":"Đề xuất đã được thay thế hoặc xóa. Xem kết quả mới nhất.","proposal-expired":"Đề xuất đã hết hạn hoặc thiết bị đã reboot. Phân tích lại trước khi áp dụng.","proposal-auto-needs-history":"Chưa đủ 2 ngày có mẫu, 30 mẫu và 30 phút quan sát để tự áp dụng.","proposal-auto-disabled":"Tự áp dụng theo lịch đang tắt.","proposal-manual-rule":"Giữ quy tắc ứng dụng bạn tự đặt. Bạn có thể xem và áp dụng thủ công.","proposal-kernel-mismatch":"Kernel chưa xác minh khớp; chưa áp dụng đề xuất.","proposal-game-unsupported":"Ứng dụng không hỗ trợ GameManager performance.","proposal-module-disabled":"Module đang tắt; chưa áp dụng đề xuất.","proposal-runtime-needs-review":"Có lỗi tinh chỉnh cần kiểm tra trong Chẩn đoán trước khi áp dụng.","proposal-restore-conflict":"Có xung đột hoàn tác cần kiểm tra.","proposal-undo-conflict":"Cài đặt đã được đổi bên ngoài; giữ nguyên thay đổi đó và không ghi đè để hoàn tác.","proposal-application-needs-review":"Lượt trước chưa xác định hoàn tất; kiểm tra cấu hình trước khi áp dụng tiếp."};
+  return messages[code] || `Chưa áp dụng: ${code}`;
+}
+async function loadApplication(){
+  lastApplication=await rpc<any>({action:"ai_application_status"});
+  const states:Record<string,string>={applied:"Đã lưu cài đặt",undone:"Đã hoàn tác",failed:"Áp dụng chưa thành công",pending:"Đang xác minh", "not-committed":"Chưa lưu cài đặt","needs-review":"Cần kiểm tra trạng thái",acknowledged:"Đã giữ cấu hình hiện tại","undo-pending":"Đang xác minh hoàn tác"};
+  text("ai-last-application",lastApplication.status?`${states[lastApplication.status] || lastApplication.status} · ${lastApplication.automatic?"Theo lịch":"Bạn bấm áp dụng"} · ${lastApplication.at} · ${(lastApplication.changes || []).length} thay đổi. Watcher áp dụng cấu hình theo trạng thái thiết bị.`:"Chưa áp dụng đề xuất nào.");
+  $<HTMLButtonElement>("ai-undo").disabled=lastApplication.status!=="applied";
+  $("ai-acknowledge").hidden=lastApplication.status!=="needs-review";
+}
+function renderProposal(container:HTMLElement,result:any){
+  const plan=result.proposal;
+  if(!plan){if(result.source==="api"&&(result.proposal_error||result.proposal_note)){const note=document.createElement("p");note.className="footnote";note.textContent=result.proposal_note==="no-changes"?"AI không đề xuất thay đổi cài đặt trong lượt này.":proposalMessage(result.proposal_error);container.append(note);}return;}
+  const section=document.createElement("div");section.className="proposal-card";
+  const title=document.createElement("h4");title.textContent="Các thay đổi được đề xuất";section.append(title);
+  const names:Record<string,string>={...labels,automatic:"Tự chọn",on:"Bật",off:"Tắt"};
+  for(const change of plan.changes || []){const row=document.createElement("div");row.className="proposal-change";const label=document.createElement("strong");label.textContent=change.kind==="app_profile"?`${change.app_id} · ${change.package}`:"Preset kernel Hằng ngày";const values=document.createElement("p");values.textContent=`${names[change.before] || change.before} → ${names[change.after] || change.after}`;const reason=document.createElement("p");reason.textContent=change.reason;row.append(label,values,reason);section.append(row);}
+  const status=document.createElement("p");status.className="footnote";
+  const receipt=lastApplication.proposal_id===plan.id?lastApplication:result.application;
+  status.textContent=receipt?.status==="applied"?"Đã lưu cấu hình. Watcher áp dụng khi đủ điều kiện; có thể hoàn tác lượt gần nhất.":receipt?.status==="undone"?"Đề xuất này đã được hoàn tác. Phân tích lại để lấy đề xuất mới.":receipt?.error?proposalMessage(receipt.error):"Chỉ các thay đổi trong bảng này được áp dụng sau khi kiểm tra lại kernel và cấu hình.";
+  const button=document.createElement("button");button.className="primary proposal-apply";button.textContent="Áp dụng đề xuất";button.disabled=receipt?.proposal_id===plan.id&&["applied","undone"].includes(receipt.status);
+  button.addEventListener("click",async()=>{button.disabled=true;button.textContent="Đang kiểm tra & áp dụng…";try{const applied=await rpc<any>({action:"ai_proposal_apply",proposal_id:plan.id});status.textContent=applied.status==="applied"?"Đã lưu cấu hình. Watcher áp dụng theo trạng thái thiết bị.":"Đề xuất đã được xử lý; xem lượt áp dụng gần nhất.";await loadApplication();await refresh();button.textContent="Đã xử lý đề xuất";}catch(error){const code=error instanceof Error?error.message:"proposal-apply-failed";status.textContent=proposalMessage(code);button.disabled=false;button.textContent="Áp dụng đề xuất";}});
+  section.append(status,button);container.append(section);
+}
+bind("ai-undo",async()=>{try{await rpc({action:"ai_application_undo"});await loadApplication();await refresh();notify("Đã hoàn tác cấu hình AI của lượt gần nhất. Giữ các thiết lập khác.");}catch(error){failure(new Error(proposalMessage(error instanceof Error?error.message:"proposal-undo-failed")));}});
+bind("ai-acknowledge",async()=>{await rpc({action:"ai_application_acknowledge"});await loadApplication();notify("Đã giữ cấu hình hiện tại và bỏ quyền hoàn tác lượt chưa xác minh. Chưa áp dụng thay đổi mới.");});
 function busyAI(busy:boolean) {for(const id of ["ai-ask","api-test","learning-analyze","ai-new-chat"]) $<HTMLButtonElement>(id).disabled=busy;$("ai-progress").hidden=!busy;$("ai").setAttribute("aria-busy",String(busy));$("habits").setAttribute("aria-busy",String(busy));if(aiClock)clearInterval(aiClock);if(busy){updateAIClock();aiClock=setInterval(updateAIClock,1000);}}
 function updateAIClock(){const seconds=aiJob?.started?Math.max(0,Math.floor((Date.now()-Date.parse(aiJob.started))/1000)):0;text("ai-progress-title",aiJob?.state==="cancelling"?"Đang hủy yêu cầu…":aiJob?.state==="queued"?"Đang chuẩn bị dữ liệu…":"Đang chờ AI phân tích…");text("ai-progress-detail",`${seconds} giây đã chờ · Bạn có thể chuyển trang; kết quả sẽ được giữ trong phiên tác vụ.`);}
 function finishAI(job:any){
@@ -190,6 +224,7 @@ function finishAI(job:any){
   const result=job.result;
   if(job.mode==="daily"){showDaily(result);if(result?.result)showAnswer({...result.result,app_legend:result.legend});notify("Đã có phân tích thống kê. Bạn có thể xem lại trong Thói quen.");}
   else if(result){showAnswer(result);if(job.mode==="ask"&&result.source==="api"){conversation.push({role:"assistant",content:String(result.answer).slice(0,12000)});notify("Đã có kết quả trong Trợ lý AI. Bạn có thể hỏi tiếp.");}}
+  void loadApplication().catch(failure);
 }
 async function pollAI(){if(aiPolling||!aiJob||document.hidden)return;aiPolling=true;try{const job=await rpc<any>({action:"ai_job_status",job_id:aiJob.id});aiJob=job;if(["completed","failed","cancelled"].includes(job.state)){finishAI(job);return;}updateAIClock();}catch(error){aiJob=null;busyAI(false);failure(new Error("Không đọc được trạng thái tác vụ. Mở lại Trợ lý AI để kiểm tra; chưa gửi thêm yêu cầu API."));}finally{aiPolling=false;if(aiJob&&!document.hidden)aiPollTimer=setTimeout(()=>void pollAI(),1200);}}
 async function resumeAI(){if(aiJob){if(!aiPolling){if(aiPollTimer)clearTimeout(aiPollTimer);void pollAI();}return;}const job=await rpc<any>({action:"ai_job_status"});if(["queued","running","cancelling"].includes(job.state)){aiJob=job;busyAI(true);void pollAI();}else if(["completed","failed"].includes(job.state)&&job.id!==renderedJob){finishAI(job);}}
@@ -205,7 +240,7 @@ bind("api-disable", async () => { await act({ action: "ai_disable" }, "AI đã t
 bind("api-clear", async () => { await act({ action: "ai_clear" }, "Đã xóa cấu hình và khóa API."); $<HTMLFormElement>("api-form").reset(); input("api-key").value = ""; });
 
 function showDaily(daily: any) {
-  if (!daily?.result) { text("learning-answer", "Chưa có phân tích. AI không tự áp dụng thiết lập."); $("learning-legend").hidden = true; return; }
+  if (!daily?.result) { text("learning-answer", "Chưa có phân tích hoặc đề xuất để áp dụng."); $("learning-legend").hidden = true; return; }
   showAnswer(daily.result, "learning-answer");
   text("learning-legend", `Phân tích lúc ${daily.at} · ${daily.automatic ? "Theo lịch" : "Thủ công"}\nBảng đối chiếu tại thời điểm phân tích, chỉ trên máy:\n${(daily.legend || []).map((x:any) => `${x.id}: ${x.package}`).join("\n")}`);
   $("learning-legend").hidden = false;
@@ -216,6 +251,7 @@ async function loadLearning() {
   const c = status.config;
   input("learning-enabled").checked = c.enabled; input("learning-adaptive").checked = c.adaptive;
   input("learning-daily").checked = c.daily_ai; input("learning-charging").checked = c.charging_only;
+  input("learning-auto-apply").checked=!!c.auto_apply;
   input("learning-hour").value = String(c.hour); input("learning-zone").value = c.timezone;
   const days: any[] = Object.values(status.history?.days || {});
   const total = (key:string) => days.reduce((n,d) => n + (d[key] || 0), 0);
@@ -228,11 +264,11 @@ async function loadLearning() {
   hours.forEach((seconds,hour) => { const row = document.createElement("label"); row.className = "habit-hour"; const meter = document.createElement("meter"); meter.min = 0; meter.max = Math.max(60,...hours); meter.value = seconds; meter.setAttribute("aria-label", `${hour} giờ: ${Math.round(seconds/60)} phút`); row.append(document.createTextNode(`${String(hour).padStart(2,"0")}h`),meter,document.createTextNode(`${Math.round(seconds/60)}′`)); chart.append(row); });
   const apps = $("learning-apps"); apps.replaceChildren();
   for (const item of status.apps || []) { const row = document.createElement("p"); row.className = "app-name"; row.textContent = `${item.id} · ${item.package} · ${Math.round(item.seconds/60)} phút / ${item.days} ngày / ${item.sessions} phiên · ${labels[item.profile] || "Theo quy tắc tự động"}`; apps.append(row); }
-  text("learning-preview", pretty(await rpc({action:"learning_preview"}))); showDaily(status.daily);
+  text("learning-preview", pretty(await rpc({action:"learning_preview"})));await loadApplication(); showDaily(status.daily);
 }
 $("learning-form").addEventListener("submit", async event => {
   event.preventDefault(); const button = $("learning-form").querySelector<HTMLButtonElement>('button[type="submit"]')!; button.disabled = true;
-  try { await rpc({ action:"learning_save", learning:{ enabled:input("learning-enabled").checked,adaptive:input("learning-adaptive").checked,daily_ai:input("learning-daily").checked,hour:Number(input("learning-hour").value),charging_only:input("learning-charging").checked,timezone:input("learning-zone").value.trim() } }); notify("Đã lưu. Quy tắc cục bộ chọn profile; đề xuất AI cần bạn xem và đặt bằng điều khiển có sẵn."); await loadLearning(); } catch(error) { failure(error); } finally { button.disabled = false; }
+  try { await rpc({ action:"learning_save", learning:{ enabled:input("learning-enabled").checked,adaptive:input("learning-adaptive").checked,daily_ai:input("learning-daily").checked,auto_apply:input("learning-auto-apply").checked,hour:Number(input("learning-hour").value),charging_only:input("learning-charging").checked,timezone:input("learning-zone").value.trim() } }); notify(input("learning-auto-apply").checked?"Đã bật tự áp dụng đề xuất hợp lệ sau lượt AI theo lịch, khi đủ dữ liệu và điều kiện kiểm tra.":"Đã lưu. Đề xuất AI chỉ được áp dụng khi bạn bấm nút."); await loadLearning(); } catch(error) { failure(error); } finally { button.disabled = false; }
 });
 bind("learning-refresh", loadLearning);
 bind("learning-reset", async () => { await rpc({action:"learning_reset"}); await loadLearning(); notify("Đã xóa lịch sử và phân tích. Bắt đầu quan sát lại; không tự thử thêm API hôm nay."); });

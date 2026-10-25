@@ -45,10 +45,17 @@ func (a *App) dailySnapshot(at time.Time) (map[string]any, []HabitApp, error) {
 	legend := historyApps(l.History, core)
 	for _, item := range legend {
 		profile := item.Profile
+		source := "automatic"
+		if profile != "" {
+			source = "manual"
+			if core.AIProfiles[item.Package] == profile {
+				source = "ai"
+			}
+		}
 		if profile == "" {
 			profile = "automatic"
 		}
-		apps = append(apps, map[string]any{"id": item.ID, "seconds": item.Seconds, "sessions": item.Sessions, "days": item.Days, "performance_supported": item.GameSupported, "profile": profile})
+		apps = append(apps, map[string]any{"id": item.ID, "seconds": item.Seconds, "sessions": item.Sessions, "days": item.Days, "performance_supported": item.GameSupported, "profile": profile, "rule_source": source})
 	}
 	days := map[string]any{}
 	var samples, observed int64
@@ -57,12 +64,12 @@ func (a *App) dailySnapshot(at time.Time) (map[string]any, []HabitApp, error) {
 		observed += day.Observed
 		days[date] = map[string]any{"timezone": day.Timezone, "observed_seconds": day.Observed, "active_seconds": day.Active, "samples": day.Samples, "charging_samples": day.ChargingSamples, "hours": day.Hours, "metrics": day.Metrics}
 	}
-	return map[string]any{"device": "Xiaomi 14 houji 8GB", "through": h.Through, "timezone": c.Timezone, "retention_days": 7, "samples": samples, "observed_seconds": observed, "coverage_note": "Observed intervals only; gaps and missing sensors are unknown. Max 16 apps, 32 tracked per day; app IDs are temporary labels. Not a battery/FPS benchmark.", "days": days, "apps": apps, "settings": map[string]any{"adaptive": c.Adaptive, "kernel_preset": core.KernelTuning}, "module_controls": "daily/native-game/windows-game/linux app profiles; native-game only when supported; adaptive on/off; existing kernel preset on/off. User reviews and applies manually; AI never executes settings."}, legend, nil
+	return map[string]any{"device": "Xiaomi 14 houji 8GB", "through": h.Through, "timezone": c.Timezone, "retention_days": 7, "samples": samples, "observed_seconds": observed, "coverage_note": "Observed intervals only; gaps and missing sensors are unknown. Max 16 apps, 32 tracked per day; app IDs are temporary labels. Not a battery/FPS benchmark.", "days": days, "apps": apps, "settings": map[string]any{"adaptive": c.Adaptive, "kernel_preset": core.KernelTuning, "automatic_application": c.AutoApply}, "module_controls": "app_profile: automatic/daily/native-game/windows-game/linux; native-game only when supported. kernel_preset: existing preset on/off only when kernel matches. No custom knob values or commands. Apply only through module validation."}, legend, nil
 }
 
 const dailyInstruction = usefulAdvisorInstruction + `
 Đây là thống kê tối đa 7 ngày theo giờ và ứng dụng mã hóa tên. Sum/count là trung bình các mẫu, không phải tích phân theo thời gian. Chỉ đánh giá phần thời gian được quan sát; không suy đoán thói quen từ khoảng thiếu dữ liệu. CPU busy là phần trăm từ chênh lệch /proc/stat.
-Nêu các khung giờ nổi bật, thay đổi giữa các ngày có đủ độ phủ và những đề xuất đáng thử theo thứ tự ưu tiên. Chỉ được đề xuất profile có sẵn daily/native-game/windows-game/linux, bật/tắt adaptive hoặc bật/tắt preset kernel hiện có. Native-game chỉ khi performance_supported=true. Không tạo tham số kernel mới. Không tự áp dụng. Liên hệ app-ID để người dùng đối chiếu bảng trên máy. Khi chưa đủ 2 ngày có mẫu, giải thích mẫu hiện có và đề xuất thu thập thêm, không khẳng định đã học được thói quen.`
+Nêu các khung giờ nổi bật, thay đổi giữa các ngày có đủ độ phủ và những đề xuất đáng thử theo thứ tự ưu tiên. Chỉ tạo actions cho app_profile hoặc kernel_preset đã có. Native-game chỉ khi performance_supported=true. Không tạo tham số kernel mới hoặc tuyên bố đã áp dụng. Liên hệ app-ID để người dùng đối chiếu bảng trên máy. Khi chưa đủ 2 ngày có mẫu, giải thích mẫu hiện có và đề xuất thu thập thêm, không khẳng định đã học được thói quen.`
 
 func (a *App) dailyAnalyze(ctx context.Context, at time.Time, automatic bool, tr http.RoundTripper) (DailyResult, error) {
 	unlock, err := a.lock("daily")
@@ -78,6 +85,7 @@ func (a *App) dailyAnalyze(ctx context.Context, at time.Time, automatic bool, tr
 	if err != nil {
 		return DailyResult{}, err
 	}
+	baseCore := core
 	if !c.Enabled || !core.Enabled || a.moduleDisabled() || !a.ownerUser(ctx) {
 		return DailyResult{}, errors.New("learning-disabled")
 	}
@@ -119,6 +127,7 @@ func (a *App) dailyAnalyze(ctx context.Context, at time.Time, automatic bool, tr
 		return DailyResult{}, errors.New("learning-needs-more-samples")
 	}
 	payload["daily_comparison"] = comparisonRows(payload["days"].(map[string]any))
+	payload["automatic_run"] = automatic
 	sync := a.KernelSync(ctx)
 	payload["kernel_compatibility"] = map[string]any{"ready": sync.Ready, "state": sync.State}
 	// Reserve before the network, including failures. No unattended retries.
@@ -133,16 +142,44 @@ func (a *App) dailyAnalyze(ctx context.Context, at time.Time, automatic bool, tr
 	if err != nil {
 		return result, err
 	}
-	defer u()
 	current, err := a.learningConfig()
 	if err != nil {
+		u()
 		return result, err
 	}
 	core, err = a.config()
 	if err != nil {
+		u()
 		return result, err
 	}
 	if !current.Enabled || current.Generation != c.Generation || !core.Enabled || a.moduleDisabled() {
+		u()
+		return DailyResult{}, errors.New("learning-changed-during-analysis")
+	}
+	u()
+	result.Result = a.attachProposal(result.Result, legend, baseCore, c.Generation, time.Now())
+	if automatic && c.AutoApply {
+		if p, ok := result.Result["proposal"].(AIProposal); ok {
+			application, applyErr := a.applyProposal(ctx, p.ID, true)
+			if applyErr != nil {
+				result.Result["application"] = map[string]any{"status": "skipped", "error": applyErr.Error()}
+			} else {
+				result.Result["application"] = application
+			}
+		} else {
+			result.Result["application"] = map[string]any{"status": "skipped", "error": "proposal-no-valid-actions"}
+		}
+	}
+	u, err = a.lock("learning")
+	if err != nil {
+		return result, err
+	}
+	defer u()
+	current, err = a.learningConfig()
+	if err != nil {
+		return result, err
+	}
+	if current.Generation != c.Generation {
 		return DailyResult{}, errors.New("learning-changed-during-analysis")
 	}
 	if err = atomicJSON(a.state("daily-ai.json"), result); err != nil {
@@ -224,7 +261,7 @@ func (a *App) resetLearning() error {
 		return err
 	}
 	defer jobUnlock()
-	for _, name := range []string{"learning.json", "daily-ai.json", "ai-job.json"} {
+	for _, name := range []string{"learning.json", "daily-ai.json", "ai-job.json", "ai-proposal.json"} {
 		if err = os.Remove(a.state(name)); err != nil && !os.IsNotExist(err) {
 			return err
 		}
@@ -243,7 +280,7 @@ func (a *App) clearLearning() {
 		return
 	}
 	defer v()
-	for _, name := range []string{"learning-config.json", "learning.json", "daily-ai.json", "daily-attempt.json", "ai-job.json"} {
+	for _, name := range []string{"learning-config.json", "learning.json", "daily-ai.json", "daily-attempt.json", "ai-job.json", "ai-proposal.json", "ai-application.json"} {
 		_ = os.Remove(a.state(name))
 	}
 }

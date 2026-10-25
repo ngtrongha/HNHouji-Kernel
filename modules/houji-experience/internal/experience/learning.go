@@ -18,6 +18,7 @@ type LearningConfig struct {
 	Enabled      bool   `json:"enabled"`
 	Adaptive     bool   `json:"adaptive"`
 	DailyAI      bool   `json:"daily_ai"`
+	AutoApply    bool   `json:"auto_apply"`
 	Hour         int    `json:"hour"`
 	ChargingOnly bool   `json:"charging_only"`
 	Timezone     string `json:"timezone"`

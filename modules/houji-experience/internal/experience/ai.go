@@ -175,7 +175,7 @@ func (a *App) requestAI(ctx context.Context, prompt string, test bool, instructi
 		text = payload
 	}
 	if c.Key != "" {
-		text = strings.ReplaceAll(text, c.Key, "[REDACTED]")
+		text = redactAI(text, c.Key)
 	}
 	var body any
 	route := "/chat/completions"
@@ -297,7 +297,7 @@ func (a *App) requestAI(ctx context.Context, prompt string, test bool, instructi
 	}
 	// Even a provider that echoes secrets cannot return them to the UI or logs.
 	if c.Key != "" {
-		answer = strings.ReplaceAll(answer, c.Key, "[REDACTED]")
+		answer = redactAI(answer, c.Key)
 	}
 	usage := map[string]int{}
 	for _, key := range []string{"input_tokens", "output_tokens", "total_tokens", "prompt_tokens", "completion_tokens"} {
@@ -353,4 +353,14 @@ func (a *App) requestAI(ctx context.Context, prompt string, test bool, instructi
 	}
 	a.logEvent("ai-success")
 	return withMetadata(map[string]any{"source": "api", "answer": answer})
+}
+
+func redactAI(text, key string) string {
+	if key == "" {
+		return text
+	}
+	encoded, _ := json.Marshal(key)
+	escaped := string(encoded[1 : len(encoded)-1])
+	text = strings.ReplaceAll(text, escaped, "[REDACTED]")
+	return strings.ReplaceAll(text, key, "[REDACTED]")
 }

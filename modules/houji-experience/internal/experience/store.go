@@ -14,7 +14,7 @@ import (
 )
 
 const ModuleID = "houji_experience"
-const Version = "0.3.0-preview"
+const Version = "0.4.0-preview"
 
 type Config struct {
 	DefaultsVersion int               `json:"defaults_version"`
@@ -23,6 +23,7 @@ type Config struct {
 	Enabled         bool              `json:"enabled"`
 	KernelTuning    bool              `json:"kernel_tuning"`
 	Apps            map[string]string `json:"apps"`
+	AIProfiles      map[string]string `json:"ai_profiles,omitempty"`
 	Protected       map[string]bool   `json:"protected"`
 	MigrationBoot   string            `json:"migration_boot,omitempty"`
 	LegacySHA256    string            `json:"legacy_sha256,omitempty"`
