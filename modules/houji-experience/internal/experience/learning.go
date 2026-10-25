@@ -516,7 +516,7 @@ func (a *App) LearningStatus(ctx context.Context) map[string]any {
 	l.day(time.Now())
 	h = l.History
 	var daily DailyResult
-	_ = readJSON(a.state("daily-ai.json"), &daily)
+	_ = readAIJSON(a.state("daily-ai.json"), &daily)
 	var attempt DailyAttempt
 	_ = readJSON(a.state("daily-attempt.json"), &attempt)
 	return map[string]any{"config": c, "history": h, "apps": historyApps(h, core), "daily": daily, "last_attempt": attempt, "retention_days": 7, "sampling_seconds": 60, "flush_seconds": 300}

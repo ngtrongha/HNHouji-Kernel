@@ -1,4 +1,4 @@
-# HNHouji Experience 0.2.0-preview
+# HNHouji Experience 0.3.0-preview
 
 Module KernelSU độc lập cho Xiaomi 14 **houji**, arm64, GKI 6.1 và user 0.
 WebUI mở trong Manager; CLI là phương án dự phòng. Không cần metamodule,
@@ -121,12 +121,17 @@ Hỗ trợ `chat_completions` và `responses`; base URL gồm API prefix, không
 đường dẫn `/chat/completions` hoặc `/responses`. Dùng HTTPS với chứng chỉ hợp lệ.
 Proxy riêng có thể chọn không xác thực, nhưng nên có token nếu public.
 
-- Chat Completions gửi `messages`, `max_completion_tokens`, `stream:false`.
+- Chat Completions gửi `messages`, `stream:false`.
   Endpoint phải hỗ trợ các trường này; nếu nhà cung cấp dùng giao thức khác,
   dùng proxy chuyển đổi. Responses gửi `input`, `instructions`,
-  `max_output_tokens`, `store:false`.
-- Cấu hình mới mặc định 1024 output token, timeout 30 giây; giữ nguyên giới hạn
-  bạn đã lưu (kể cả 512). Một yêu cầu/lần, không retry.
+  `store:false`. Chỉ gửi `max_completion_tokens`/`max_output_tokens` khi bạn
+  chọn một ngân sách token dương.
+- Token mặc định **0 = theo nhà cung cấp**, bỏ trường token khỏi request. Không
+  có trần token 2048 của module; có thể nhập 8192, 16384 hoặc số dương khác.
+  Model/nhà cung cấp vẫn quyết định giới hạn thực tế. Nâng cấp từ bản cũ chuyển
+  các mức 512/1024/2048 sang 0 một lần; lựa chọn tường minh lưu ở bản mới được giữ.
+  Timeout mới 180 giây, chỉnh 5..900; mức timeout cũ mặc định 30 đổi sang 180.
+  Một yêu cầu/lần, không tự retry. Không tự tiếp tục khi model cắt phản hồi.
 - **Lưu cấu hình API không gọi mạng.** Gọi khi bấm Kiểm tra kết nối/Phân tích,
   hoặc theo lịch hằng ngày bạn bật riêng trong **Thói quen**.
   Kiểm tra kết nối không gửi telemetry. API có thể phát sinh phí.
@@ -135,10 +140,14 @@ Proxy riêng có thể chọn không xác thực, nhưng nên có token nếu pu
 - Khóa lưu ở `/data/adb/houji-experience/ai.json` (0600, thư mục 0700), không trả
   lại WebUI, không vào browser storage/log/export. Root khác vẫn có thể đọc nó.
   Có thể dùng proxy để giữ khóa nhà cung cấp ngoài điện thoại.
-- Báo cáo gửi kèm chỉ có CPU load, RAM/PSI, ZRAM, pin/nhiệt và khả năng NTSync/
-  xung đột helper. Không tự gửi package list, raw logcat, thông báo hay serial.
+- Dữ liệu gửi kèm gồm mẫu hiện tại, thống kê 7 ngày, trung bình/cực đại/số mẫu
+  theo ngày và thiết lập module có hỗ trợ. Không tự gửi tên package, raw logcat,
+  thông báo hay serial. Bảng tên package/app-ID tương ứng chính xác với snapshot
+  của yêu cầu chỉ được bổ sung vào kết quả **sau** khi gọi API, giữ riêng trên máy.
   Câu hỏi do người dùng nhập cũng được gửi: tránh nhập dữ liệu không muốn chia sẻ.
-- Không tải lịch sử hội thoại. Kết quả AI là văn bản, không được chạy như lệnh
+- Hỏi tiếp dùng tối đa 6 tin nhắn gần nhất, tổng nội dung tối đa 32 KiB trong RAM
+  phiên WebUI. Không dùng browser storage. Cuộc trao đổi mới xóa ngữ cảnh phiên
+  và kết quả tác vụ thủ công gần nhất. Kết quả AI là văn bản, không được chạy như lệnh
   hoặc tự áp dụng. Khi API lỗi, hiện báo cáo cơ bản cùng mã lỗi.
 - Không ghi nội dung hỏi/đáp vào log. Phân tích hằng ngày gần nhất được lưu riêng
   trên máy để bạn xem lại, gồm token usage và bảng đối chiếu app-ID. Không ước lượng tiền.
@@ -149,6 +158,36 @@ Proxy riêng có thể chọn không xác thực, nhưng nên có token nếu pu
   loadavg không phải phần trăm CPU. Không gửi lại tự động khi hết token.
   Endpoint cần trả `finish_reason:"stop"` (Chat) hoặc `status:"completed"`
   (Responses); thiếu trạng thái kết thúc cũng dùng báo cáo cục bộ.
+
+## Trợ lý và giao diện AI (0.3.0)
+
+- Chọn mục tiêu Hằng ngày/Đa nhiệm/Chơi game/Giảm tải. Hỏi về khác biệt giữa
+  các ngày, ưu tiên điều chỉnh hoặc kế hoạch đo; có thể hỏi tiếp vì sao và đánh đổi.
+  Prompt không ép 180 từ/4 gạch đầu dòng. AI được yêu cầu đưa bằng chứng có số
+  đo, giới hạn độ phủ, đề xuất theo thứ tự và cách so sánh trước/sau.
+- Bảng so sánh trung bình/cực đại/số mẫu được tính cục bộ. Hai ngày khác workload
+  không tự chứng minh nguyên nhân. CPU busy là toàn máy; không gán cho riêng app.
+  Chất lượng kết luận còn phụ thuộc model và dữ liệu; chưa có phép đo thực thì
+  không công bố tiết kiệm pin, FPS hay hiệu năng tăng.
+- WebUI gửi RPC ngắn tạo tác vụ, native worker riêng gọi API, trạng thái được
+  kiểm tra khoảng 1,2 giây/lần khi trang hiển thị. Có spinner, số giây đã chờ,
+  nút hủy và mở lại trang để xem tác vụ đang chạy/kết quả gần nhất. Không giả
+  phần trăm tiến độ hay giả streaming. CLI cũ vẫn hỗ trợ lời gọi đồng bộ.
+- Worker chỉ chạy binary của module với ID ngẫu nhiên; prompt/khóa không nằm
+  trong argv hay log. Hủy ngắt context HTTP; việc nhà cung cấp đã xử lý/tính phí
+  phần nào trước lúc hủy phụ thuộc nhà cung cấp. Reboot/worker bị dừng được báo
+  gián đoạn, không tự gửi lại. Kết quả gần nhất giữ private tối đa 7 ngày khi
+  watcher hoạt động, bị xóa khi reset lịch sử/gỡ module.
+- Markdown được dựng bằng DOM text: mục, danh sách, chữ đậm, bảng, code dạng
+  văn bản. Không dựng HTML hoặc thực thi nội dung model. Metadata token/model
+  được gấp riêng. Cấu hình API nằm trong mục thu gọn, ưu tiên không gian đọc.
+- HTTP response có giới hạn bộ nhớ riêng 2 MiB, file kết quả đọc tối đa 16 MiB
+  để chứa JSON đã escape;
+  đây là giới hạn bytes để bảo vệ bộ nhớ, không phải trần token. Kiểm thử dùng
+  API mô phỏng, vẫn cần kiểm chứng native worker và cảm giác UI trong Manager
+  trên houji. Không gửi khóa API thật vào kiểm thử hay repo.
+
+Tham khảo: [OpenRouter: tham số và giá trị mặc định khi không gửi](https://openrouter.ai/docs/api_reference/parameters).
 
 ## Học thói quen và phân tích hằng ngày (0.2.0)
 
@@ -279,7 +318,7 @@ binary thuần Go CGO=0 dù cross-compile thành công. Không build bằng `net
 Go runtime được link vào binary; license BSD kèm ZIP. Không có dependency Go
 bên thứ ba hoặc HTTP server chạy nền.
 
-Đầu ra `dist/HNHouji-Experience-0.2.0-preview.zip`, checksum và manifest; không
+Đầu ra `dist/HNHouji-Experience-0.3.0-preview.zip`, checksum và manifest; không
 đưa source test, node_modules, model, key hay state vào ZIP. Build metadata nằm
 trong manifest. Build riêng tạo ZIP generic; khi được workflow kernel gọi,
 tạo ZIP có hậu tố bản kernel/hash và metadata nhúng. Workflow module không tự

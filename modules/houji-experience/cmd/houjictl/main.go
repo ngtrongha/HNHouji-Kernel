@@ -46,6 +46,11 @@ func run(ctx context.Context, args []string) error {
 		args = []string{"status"}
 	}
 	switch args[0] {
+	case "ai-worker":
+		if len(args) != 2 {
+			return errors.New("missing AI job ID")
+		}
+		return a.RunAIJob(ctx, args[1], nil)
 	case "watch":
 		return a.Watch(ctx)
 	case "install":

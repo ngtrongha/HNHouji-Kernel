@@ -9,6 +9,7 @@ async function mockBridge(page) {
     const config = { enabled: true, kernel_tuning:true, default_profile:'daily', apps: {}, protected: {} };
     let ai = { configured: false, enabled: false };
     let learning = {enabled:true,adaptive:true,daily_ai:false,hour:21,timezone:'Asia/Ho_Chi_Minh',charging_only:false};
+    let job={state:'idle'};
     const report = { source: 'local-rules', metrics: { MemTotal_kib: 8000000, MemAvailable_kib: 3000000, zram_original_bytes: 1200000000, zram_allocated_bytes: 480000000, battery_percent: 80, battery_celsius: 35 }, advice: ['Một mẫu chưa đủ kết luận pin chờ.'], ntsync: false, legacy_conflict: false };
     window.ksu = { exec(command, options, callback) {
       const encoded = JSON.parse(options).env.HOUJI_REQUEST_B64;
@@ -17,6 +18,13 @@ async function mockBridge(page) {
       if(req.action==='export'&&window.exportFailure){setTimeout(()=>window[callback](1,JSON.stringify({ok:false,error:'cannot access Downloads/HNHouji; unlock shared storage and try again'}),''),0);return;}
       let data = {};
       switch (req.action) {
+        case 'ai_job_start': {
+          let result=req.mode==='test'?{source:'api',answer:'Kết nối hoạt động.',usage:{},elapsed_ms:12}:window.truncatedAI?{source:'local-rules',ai_error:'response-truncated',report,usage:{completion_tokens:512},elapsed_ms:20,finish_reason:'length',model:'routed-model'}:ai.enabled?{source:'api',answer:'## Nhận định\n**Bằng chứng** đủ đọc.\n- <img src=x onerror="window.pwned=true"> $(reboot)\n\n| Chọn | Kiểm tra |\n| --- | --- |\n| daily | đo lặp |',usage:{total_tokens:50},finish_reason:'stop',model:'actual-model',elapsed_ms:15}:{source:'local-rules',ai_error:'not-configured',report};
+          if(req.mode==='daily')result={at:'2026-10-25T13:00:00Z',legend:[{id:'app-01',package:'com.example.game'}],result:{source:'api',answer:'app-01: <img src=x onerror="window.pwned=true"> xem xét daily',usage:{total_tokens:100},finish_reason:'stop',model:'actual-model',elapsed_ms:20}};
+          job={id:'job-'+window.requests.length,mode:req.mode,state:'queued',started:new Date().toISOString(),result};data={...job,result:undefined};break;
+        }
+        case 'ai_job_status': if(job.state==='queued'||job.state==='running')job.state=window.holdAI?'running':'completed';data=job;break;
+        case 'ai_job_cancel': job.state='cancelled';data=job;break;
         case 'learning_status': data={config:learning,history:{days:{'2026-10-25':{observed_seconds:600,active_seconds:300,samples:10,hours:Array.from({length:24},(_,h)=>({active_seconds:h===20?300:0}))}},through:'2026-10-25T13:00:00Z'},apps:[{id:'app-01',package:'com.example.game',seconds:300,days:1,sessions:2}],daily:{}};break;
         case 'learning_preview': data={apps:[{id:'app-01',seconds:300}],observed_seconds:600};break;
         case 'learning_save': learning=req.learning;break;
@@ -59,11 +67,11 @@ test('habits opt in to scheduling, show coverage and keep AI suggestions for rev
   await expect(page.locator('#learning-hours meter')).toHaveCount(24);
   await expect(page.locator('#learning-preview')).not.toContainText('com.example');
   await expect(page.locator('#learning-apps')).toContainText('com.example.game');
-  expect(await page.evaluate(()=>window.requests.some(x=>x.req.action==='learning_analyze'))).toBeFalsy();
+  expect(await page.evaluate(()=>window.requests.some(x=>x.req.action==='ai_job_start'&&x.req.mode==='daily'))).toBeFalsy();
   await page.locator('#learning-daily').check();await page.locator('#learning-hour').fill('22');
   await page.getByRole('button',{name:'Lưu cài đặt thói quen',exact:true}).click();
   await expect.poll(()=>page.evaluate(()=>window.requests.some(x=>x.req.action==='learning_save'&&x.req.learning.daily_ai&&x.req.learning.hour===22))).toBeTruthy();
-  await page.locator('#learning-analyze').click();await expect(page.locator('#learning-answer')).toContainText('xem xét daily');
+  await page.locator('#learning-analyze').click();await page.getByRole('tab',{name:'Thói quen',exact:true}).click();await expect(page.locator('#learning-answer')).toContainText('xem xét daily');
   await expect(page.locator('#learning-answer img')).toHaveCount(0);
   await expect(page.locator('#learning-legend')).toContainText('app-01: com.example.game');
   expect(await page.evaluate(()=>window.requests.some(x=>x.req.action==='app_set'))).toBeFalsy();
@@ -78,7 +86,28 @@ test('AI truncation explains fallback and exposes model and finish status', asyn
   await expect(page.locator('#ai-answer')).toContainText('hết giới hạn token');
   await expect(page.locator('#ai-answer')).toContainText('Kết thúc: length');
   await expect(page.locator('#ai-answer')).toContainText('routed-model');
-  expect(await page.evaluate(()=>window.requests.filter(x=>x.req.action==='ai_ask').length)).toBe(1);
+  expect(await page.evaluate(()=>window.requests.filter(x=>x.req.action==='ai_job_start'&&x.req.mode==='ask').length)).toBe(1);
+});
+
+test('background AI shows loading, stays navigable, cancels and accepts provider token budgets',async({page})=>{
+  await mockBridge(page);await page.goto(url);await page.evaluate(()=>{window.holdAI=true;});await page.getByRole('tab',{name:'Trợ lý AI',exact:true}).click();
+  await page.locator('#ai-prompt').fill('Kiểm tra đa nhiệm');await page.locator('[data-goal="multitask"]').click();await page.locator('#ai-ask').click();
+  await expect(page.locator('#ai-progress')).toBeVisible();await expect(page.locator('#ai-progress-detail')).toContainText('giây đã chờ');await expect(page.locator('#ai-ask')).toBeDisabled();
+  await page.getByRole('tab',{name:'Tổng quan',exact:true}).click();await expect(page.locator('#profile-name')).toBeVisible();await page.getByRole('tab',{name:'Trợ lý AI',exact:true}).click();
+  await page.locator('#ai-cancel').click();await expect(page.locator('#ai-progress')).toBeHidden();await expect(page.locator('#ai-ask')).toBeEnabled();
+  expect(await page.evaluate(()=>window.requests.filter(x=>x.req.action==='ai_job_start').length)).toBe(1);
+  await page.locator('#api-limit').fill('65536');
+  expect(await page.locator('#api-limit').evaluate(el=>el.checkValidity())).toBeTruthy();await page.locator('[data-token="0"]').click();await expect(page.locator('#api-limit')).toHaveValue('0');
+});
+
+test('analysis uses readable Markdown and includes bounded follow-up context',async({page})=>{
+  await mockBridge(page);await page.goto(url);await page.getByRole('tab',{name:'Trợ lý AI',exact:true}).click();
+  await page.locator('#api-url').fill('https://example.test/v1');await page.locator('#api-model').fill('model');await page.locator('#api-key').fill('secret');await page.getByRole('button',{name:'Lưu cấu hình',exact:true}).click();
+  await page.locator('#ai-prompt').fill('Phân tích hôm nay');await page.locator('#ai-ask').click();await expect(page.locator('#ai-answer h4')).toHaveText('Nhận định');await expect(page.locator('#ai-answer table')).toBeVisible();await expect(page.locator('#ai-answer img')).toHaveCount(0);
+  await page.locator('#ai-prompt').fill('Tại sao chọn như vậy?');await page.locator('#ai-ask').click();
+  await expect.poll(()=>page.evaluate(()=>window.requests.filter(x=>x.req.action==='ai_job_start').length)).toBe(2);
+  expect(await page.evaluate(()=>window.requests.filter(x=>x.req.action==='ai_job_start')[1].req.messages.map(m=>m.role))).toEqual(['user','assistant']);
+  await expect(page.locator('#ai-progress')).toBeHidden();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();await page.screenshot({path:'dist/screenshots/ai-redesign-mobile.png',fullPage:true});
 });
 
 test('kernel preset shows values, toggles separately and explains build mismatch', async ({page})=>{
@@ -116,7 +145,7 @@ test('mobile tabs, app rules, optional AI and safe output', async ({ page }) => 
   await page.getByRole('button', { name: 'Lưu cấu hình', exact: true }).click();
   await expect(page.locator('#api-key')).toHaveValue('');
   expect(await page.evaluate(() => window.requests.filter(x => x.req.action === 'ai_save').every(x => !x.command.includes('secret') && x.req.ai.key === "secret'$(reboot);"))).toBeTruthy();
-  expect(await page.evaluate(() => window.requests.filter(x => ['ai_test', 'ai_ask'].includes(x.req.action)).length)).toBe(1);
+  expect(await page.evaluate(() => window.requests.filter(x => x.req.action==='ai_job_start').length)).toBe(1);
   await page.locator('#ai-ask').click();
   await expect(page.locator('#ai-answer')).toContainText('<img src=x');
   await expect(page.locator('#ai-answer img')).toHaveCount(0);

@@ -1,6 +1,6 @@
 id=houji_experience
 name=HNHouji Experience
-version=0.2.0-preview
-versionCode=200
+version=0.3.0-preview
+versionCode=300
 author=HNHouji
 description=Daily profiles, private 7-day usage learning and optional daily AI advice for review. Requires matching houji kernel metadata. Preview.

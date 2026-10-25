@@ -1,4 +1,5 @@
 import { available, rpc, type RPC } from "./bridge";
+import { markdown } from "./answer";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -14,6 +15,14 @@ let latest: any = null;
 let packages: string[] = [];
 let refreshing = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
+let goal="daily";
+let aiJob:any=null;
+let aiPolling=false;
+let aiPollTimer:ReturnType<typeof setTimeout>|undefined;
+let aiClock:ReturnType<typeof setInterval>|undefined;
+let aiStarting=false;
+let renderedJob="";
+let conversation:{role:string;content:string}[]=[];
 const labels: Record<string, string> = { observe: "Quan sát", daily: "Hằng ngày", "native-game": "Game Android", "windows-game": "Game Windows", linux: "Linux", sleep: "Màn hình nghỉ" };
 const reasons: Record<string, string> = { "daily-default": "Hằng ngày mặc định: áp dụng preset kernel có hỗ trợ và các quy tắc ứng dụng đã chọn.", disabled: "Tự động đang tắt; không áp dụng tinh chỉnh.", "rules-local": "Hoạt động bằng quy tắc cục bộ, không gọi AI.", "integration-observe": "Theo dõi ứng dụng; cấu hình đồ họa/container nằm trong ứng dụng đó.", "game-mode-unsupported": "GameManager chưa hỗ trợ performance cho ứng dụng này.", "legacy-conflict": "Helper cũ xuất hiện. Xử lý trong Chẩn đoán rồi reboot.", "restore-conflict": "Có thay đổi bên ngoài hoặc trạng thái chưa khôi phục được. Xem Chẩn đoán.", "reboot-required": "Reboot sau khi xử lý helper cũ trước khi bật tự động.", "owner-user-only": "Chỉ quản lý người dùng chính (user 0).", "watcher-offline": "Watcher chưa chạy. Reboot sau cài đặt và kiểm tra Manager.", "not-started": "Chưa khởi động watcher." };
 reasons["adaptive-learned-game"] = "Đã đủ lịch sử trong khung giờ này; chọn Game Android cho ứng dụng hỗ trợ. Có thể đặt quy tắc riêng trong Ứng dụng.";
@@ -63,7 +72,7 @@ function render(status: any) {
 }
 
 async function refresh() {
-  if (!available() || document.hidden || refreshing) return;
+  if (!available() || document.hidden || refreshing || aiJob || aiStarting) return;
   refreshing = true;
   try { render(await rpc({ action: "status" })); } catch (error) { failure(error); }
   finally { refreshing = false; }
@@ -72,7 +81,7 @@ function schedule() { if (timer) clearTimeout(timer); if (document.hidden || !av
 
 async function act(request: RPC, message?: string) { const data = await rpc(request); if (message) notify(message); await refresh(); return data; }
 function bind(id: string, callback: () => Promise<void>) {
-  $(id).addEventListener("click", async () => { const button = $<HTMLButtonElement>(id); button.disabled = true; try { await callback(); } catch (error) { failure(error); } finally { button.disabled = false; } });
+  $(id).addEventListener("click", async () => { const button = $<HTMLButtonElement>(id); button.disabled = true; try { await callback(); } catch (error) { failure(error); } finally { button.disabled = ["ai-ask","api-test","learning-analyze","ai-new-chat"].includes(id) && (!!aiJob || aiStarting); } });
 }
 
 function showTab(id: string) {
@@ -96,7 +105,10 @@ async function loadAI() {
   }
   input("api-key").value = "";
   input("api-key").disabled = select("api-auth").value === "none";
-  text("ai-preview", pretty(await rpc({ action: "ai_preview" })));
+  $<HTMLDetailsElement>("api-settings").open = !status.configured;
+  const evidence=await rpc<any>({action:"ai_preview"});text("ai-preview",pretty(evidence));
+  text("ai-data-summary",`Mẫu hiện tại + ${evidence.days_with_samples || 0} ngày có mẫu · ${evidence.usage?.samples || 0} mẫu lịch sử · Khoảng thiếu dữ liệu được giữ là chưa biết.`);
+  await resumeAI();
 }
 
 function renderApps() {
@@ -151,6 +163,7 @@ select("api-auth").addEventListener("change", () => { input("api-key").disabled 
 
 function showAnswer(result: any, target = "ai-answer") {
   const answer = $(target); answer.hidden = false;
+  answer.className="ai-response";answer.replaceChildren();
   // Never render provider output as HTML, Markdown HTML, JS or shell commands.
   const errors: Record<string,string> = {
     "response-truncated":"API đã hết giới hạn token; phần trả lời dở dang được bỏ qua. Có thể tăng giới hạn token hoặc chọn model khác rồi thử thủ công.",
@@ -158,13 +171,36 @@ function showAnswer(result: any, target = "ai-answer") {
     "response-empty":"API không có nội dung trả lời cuối; model reasoning có thể đã dùng hết ngân sách token.",
     "response-filtered":"Nhà cung cấp đã lọc phản hồi; đang dùng báo cáo cục bộ.",
     "response-unusable":"Phản hồi API không hoàn tất ở dạng văn bản hỗ trợ; đang dùng báo cáo cục bộ."
+    ,"ai-worker-unavailable":"Không khởi động được tác vụ AI. Kiểm tra module trong KernelSU và reboot sau khi cập nhật."
+    ,"ai-job-interrupted":"Tác vụ đã bị gián đoạn hoặc quá thời gian chờ; không tự gửi lại API."
+    ,"ai-job-busy":"Đang có một tác vụ AI. Mở lại Trợ lý AI để kiểm tra hoặc hủy trước khi gửi yêu cầu khác."
   };
   const content = result.source === "api" ? result.answer : `Báo cáo cơ bản · ${errors[result.ai_error] || result.ai_error || "không dùng AI"}\n\n${(result.report?.advice || []).join("\n\n")}`;
-  const metadata = result.usage ? `\n\n${result.model ? `Model: ${result.model}\n` : ""}${result.elapsed_ms} ms · Kết thúc: ${result.finish_reason || "không cung cấp"}\n${pretty(result.usage)}` : "";
-  answer.textContent = content + metadata;
+  const head=document.createElement("div");head.className="response-heading";const title=document.createElement("strong");title.textContent=result.source==="api"?"Phân tích AI":"Nhận xét cục bộ";const model=document.createElement("span");model.textContent=result.model || (result.source==="api"?"Model không cung cấp tên":"Quy tắc cục bộ");head.append(title,model);answer.append(head);
+  const body=document.createElement("div");body.className="response-body";markdown(body,content);answer.append(body);
+  if(result.app_legend?.length){const details=document.createElement("details");const summary=document.createElement("summary");summary.textContent="Đối chiếu ứng dụng · Chỉ trên máy";const list=document.createElement("ul");for(const item of result.app_legend){const li=document.createElement("li");li.textContent=`${item.id} · ${item.package}`;list.append(li);}details.append(summary,list);answer.append(details);}
+  if(result.usage){const details=document.createElement("details");const summary=document.createElement("summary");const usage=result.usage;summary.textContent=`${((result.elapsed_ms || 0)/1000).toLocaleString("vi-VN",{maximumFractionDigits:1})} giây · ${usage.total_tokens ?? ((usage.prompt_tokens ?? usage.input_tokens ?? 0)+(usage.completion_tokens ?? usage.output_tokens ?? 0))} token`;const info=document.createElement("p");info.textContent=`Model: ${result.model || "không cung cấp"} · Kết thúc: ${result.finish_reason || "không cung cấp"} · Đầu vào: ${usage.prompt_tokens ?? usage.input_tokens ?? "—"} · Đầu ra: ${usage.completion_tokens ?? usage.output_tokens ?? "—"}${usage.reasoning_tokens!==undefined?` · Reasoning: ${usage.reasoning_tokens}`:""}`;details.append(summary,info);answer.append(details);}
 }
-bind("api-test", async () => { showAnswer(await rpc({ action: "ai_test" })); });
-bind("ai-ask", async () => { text("ai-preview", pretty(await rpc({ action: "ai_preview" }))); showAnswer(await rpc({ action: "ai_ask", prompt: $<HTMLTextAreaElement>("ai-prompt").value })); });
+function busyAI(busy:boolean) {for(const id of ["ai-ask","api-test","learning-analyze","ai-new-chat"]) $<HTMLButtonElement>(id).disabled=busy;$("ai-progress").hidden=!busy;$("ai").setAttribute("aria-busy",String(busy));$("habits").setAttribute("aria-busy",String(busy));if(aiClock)clearInterval(aiClock);if(busy){updateAIClock();aiClock=setInterval(updateAIClock,1000);}}
+function updateAIClock(){const seconds=aiJob?.started?Math.max(0,Math.floor((Date.now()-Date.parse(aiJob.started))/1000)):0;text("ai-progress-title",aiJob?.state==="cancelling"?"Đang hủy yêu cầu…":aiJob?.state==="queued"?"Đang chuẩn bị dữ liệu…":"Đang chờ AI phân tích…");text("ai-progress-detail",`${seconds} giây đã chờ · Bạn có thể chuyển trang; kết quả sẽ được giữ trong phiên tác vụ.`);}
+function finishAI(job:any){
+  if(aiPollTimer)clearTimeout(aiPollTimer);aiJob=null;renderedJob=job.id;busyAI(false);
+  if(job.state==="cancelled"){notify("Đã hủy yêu cầu. Không tự gọi lại API.");return;}
+  if(job.state==="failed"){showAnswer({source:"local-rules",ai_error:job.error || "Phân tích không hoàn tất."});failure(new Error(job.error || "Phân tích không hoàn tất."));return;}
+  const result=job.result;
+  if(job.mode==="daily"){showDaily(result);if(result?.result)showAnswer({...result.result,app_legend:result.legend});notify("Đã có phân tích thống kê. Bạn có thể xem lại trong Thói quen.");}
+  else if(result){showAnswer(result);if(job.mode==="ask"&&result.source==="api"){conversation.push({role:"assistant",content:String(result.answer).slice(0,12000)});notify("Đã có kết quả trong Trợ lý AI. Bạn có thể hỏi tiếp.");}}
+}
+async function pollAI(){if(aiPolling||!aiJob||document.hidden)return;aiPolling=true;try{const job=await rpc<any>({action:"ai_job_status",job_id:aiJob.id});aiJob=job;if(["completed","failed","cancelled"].includes(job.state)){finishAI(job);return;}updateAIClock();}catch(error){aiJob=null;busyAI(false);failure(new Error("Không đọc được trạng thái tác vụ. Mở lại Trợ lý AI để kiểm tra; chưa gửi thêm yêu cầu API."));}finally{aiPolling=false;if(aiJob&&!document.hidden)aiPollTimer=setTimeout(()=>void pollAI(),1200);}}
+async function resumeAI(){if(aiJob){if(!aiPolling){if(aiPollTimer)clearTimeout(aiPollTimer);void pollAI();}return;}const job=await rpc<any>({action:"ai_job_status"});if(["queued","running","cancelling"].includes(job.state)){aiJob=job;busyAI(true);void pollAI();}else if(["completed","failed"].includes(job.state)&&job.id!==renderedJob){finishAI(job);}}
+async function startAI(mode:string){if(aiStarting||aiJob)return;aiStarting=true;busyAI(true);await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));try{const question=$<HTMLTextAreaElement>("ai-prompt").value.trim() || "Phân tích bằng chứng hiện có theo mục tiêu đã chọn và đề xuất bước tiếp theo cụ thể.";const messages=conversation.slice(-6);while(new TextEncoder().encode(JSON.stringify(messages)).length>30000)messages.shift();const job=await rpc<any>({action:"ai_job_start",mode,prompt:mode==="ask"?question:"",goal,messages:mode==="ask"?messages:[]});aiJob=job;if(mode==="ask"){if(!$("ai-answer").hidden){const old=$("ai-answer").cloneNode(true) as HTMLElement;old.removeAttribute("id");$("ai-thread").append(old);}while($("ai-thread").children.length>4)$("ai-thread").firstElementChild?.remove();const bubble=document.createElement("p");bubble.className="user-message";bubble.textContent=question;$("ai-thread").append(bubble);$("ai-answer").hidden=true;conversation.push({role:"user",content:question});}if(["failed","cancelled","completed"].includes(job.state))finishAI(job);else void pollAI();}catch(error){busyAI(false);failure(error);}finally{aiStarting=false;}}
+bind("api-test",async()=>startAI("test"));
+bind("ai-ask",async()=>startAI("ask"));
+bind("ai-cancel",async()=>{if(!aiJob)return;const job=await rpc<any>({action:"ai_job_cancel",job_id:aiJob.id});aiJob=job;if(job.state==="cancelled")finishAI(job);else updateAIClock();});
+bind("ai-new-chat",async()=>{await rpc({action:"ai_job_dismiss"});conversation=[];$("ai-thread").replaceChildren();$("ai-answer").hidden=true;notify("Đã bắt đầu cuộc trao đổi mới. Không gọi API.");});
+for(const button of document.querySelectorAll<HTMLButtonElement>("[data-goal]"))button.addEventListener("click",()=>{goal=button.dataset.goal!;for(const b of document.querySelectorAll<HTMLButtonElement>("[data-goal]"))b.setAttribute("aria-pressed",String(b===button));});
+for(const button of document.querySelectorAll<HTMLButtonElement>("[data-question]"))button.addEventListener("click",()=>{$<HTMLTextAreaElement>("ai-prompt").value=button.dataset.question!;$<HTMLTextAreaElement>("ai-prompt").focus();});
+for(const button of document.querySelectorAll<HTMLButtonElement>("[data-token]"))button.addEventListener("click",()=>{input("api-limit").value=button.dataset.token!;});
 bind("api-disable", async () => { await act({ action: "ai_disable" }, "AI đã tắt. Core không bị ảnh hưởng."); await loadAI(); });
 bind("api-clear", async () => { await act({ action: "ai_clear" }, "Đã xóa cấu hình và khóa API."); $<HTMLFormElement>("api-form").reset(); input("api-key").value = ""; });
 
@@ -200,9 +236,9 @@ $("learning-form").addEventListener("submit", async event => {
 });
 bind("learning-refresh", loadLearning);
 bind("learning-reset", async () => { await rpc({action:"learning_reset"}); await loadLearning(); notify("Đã xóa lịch sử và phân tích. Bắt đầu quan sát lại; không tự thử thêm API hôm nay."); });
-bind("learning-analyze", async () => { showDaily(await rpc({action:"learning_analyze"})); });
+bind("learning-analyze", async () => { showTab("ai");await startAI("daily"); });
 
-document.addEventListener("visibilitychange", () => { if (document.hidden) { if (timer) clearTimeout(timer); input("api-key").value = ""; } else { void refresh(); schedule(); } });
+document.addEventListener("visibilitychange", () => { if (document.hidden) { if (timer) clearTimeout(timer);if(aiPollTimer)clearTimeout(aiPollTimer); input("api-key").value = ""; } else { void refresh();if(aiJob)void pollAI(); schedule(); } });
 window.addEventListener("pagehide", () => { if (timer) clearTimeout(timer); input("api-key").value = ""; });
 if (!available()) { $("bridge-warning").hidden = false; text("watcher-state", "Không có bridge"); }
 else { void refresh().then(schedule); }

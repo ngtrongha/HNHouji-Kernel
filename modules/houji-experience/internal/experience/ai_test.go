@@ -66,8 +66,64 @@ func TestAITokenDefaultPreservesExplicitLimit(t *testing.T) {
 	}
 	c.MaxOutput = 0
 	must(t, c.validate())
-	if c.MaxOutput != 1024 {
+	if c.MaxOutput != 0 {
 		t.Fatal(c.MaxOutput)
+	}
+}
+
+func TestUpgradeLegacyAIBudgetOnce(t *testing.T) {
+	a, _ := fixture(t)
+	c := aiConfig("https://example.test/v1", "responses")
+	c.Timeout = 30
+	must(t, atomicJSON(a.state("ai.json"), c))
+	must(t, a.upgradeAI())
+	var upgraded AIConfig
+	must(t, readJSON(a.state("ai.json"), &upgraded))
+	if upgraded.MaxOutput != 0 || upgraded.Timeout != 180 || upgraded.Key != c.Key {
+		t.Fatal("migration did not preserve credentials/change defaults")
+	}
+	upgraded.MaxOutput = 1024
+	must(t, a.saveAI(upgraded))
+	must(t, a.upgradeAI())
+	must(t, readJSON(a.state("ai.json"), &upgraded))
+	if upgraded.MaxOutput != 1024 {
+		t.Fatal("overrode an explicit new budget")
+	}
+}
+
+func TestTokenLimitsAreProviderControlledAndLargeAnswersSupported(t *testing.T) {
+	for _, style := range []string{"responses", "chat_completions"} {
+		for _, limit := range []int{0, 8192, 131072} {
+			a, _ := fixture(t)
+			c := aiConfig("https://example.test/v1", style)
+			c.MaxOutput = limit
+			c.Timeout = 600
+			must(t, a.saveAI(c))
+			tr := transportFunc(func(req *http.Request) (*http.Response, error) {
+				var body map[string]any
+				must(t, json.NewDecoder(req.Body).Decode(&body))
+				key := "max_completion_tokens"
+				if style == "responses" {
+					key = "max_output_tokens"
+				}
+				value, present := body[key]
+				if (limit == 0 && present) || (limit > 0 && value != float64(limit)) {
+					t.Fatal(body)
+				}
+				answer := strings.Repeat("Đủ dữ liệu. ", 12000)
+				var response any
+				if style == "responses" {
+					response = map[string]any{"status": "completed", "output": []any{map[string]any{"type": "message", "content": []any{map[string]any{"type": "output_text", "text": answer}}}}}
+				} else {
+					response = map[string]any{"choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]any{"content": answer}}}}
+				}
+				b, _ := json.Marshal(response)
+				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(string(b))), Header: http.Header{}}, nil
+			})
+			if r := a.askWithTransport(context.Background(), "", true, tr); r["source"] != "api" {
+				t.Fatal(r)
+			}
+		}
 	}
 }
 

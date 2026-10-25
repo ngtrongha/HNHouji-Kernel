@@ -17,6 +17,10 @@ type Request struct {
 	AI        *AIConfig       `json:"ai,omitempty"`
 	Prompt    string          `json:"prompt,omitempty"`
 	Learning  *LearningConfig `json:"learning,omitempty"`
+	Mode      string          `json:"mode,omitempty"`
+	JobID     string          `json:"job_id,omitempty"`
+	Goal      string          `json:"goal,omitempty"`
+	Messages  []ChatMessage   `json:"messages,omitempty"`
 }
 type Response struct {
 	OK    bool   `json:"ok"`
@@ -34,6 +38,27 @@ func (a *App) Dispatch(ctx context.Context, r Request) Response {
 
 func (a *App) dispatch(ctx context.Context, r Request) (any, error) {
 	switch r.Action {
+	case "ai_job_start":
+		return a.startAIJob(r, a.launchAIWorker)
+	case "ai_job_status":
+		return a.AIJobStatus(r.JobID, false)
+	case "ai_job_cancel":
+		return a.AIJobStatus(r.JobID, true)
+	case "ai_job_dismiss":
+		u, e := a.lock("ai-job")
+		if e != nil {
+			return nil, e
+		}
+		defer u()
+		var job AIJob
+		if readAIJSON(a.state("ai-job.json"), &job) == nil && activeJob(job) {
+			return nil, errors.New("ai-job-busy")
+		}
+		e = os.Remove(a.state("ai-job.json"))
+		if os.IsNotExist(e) {
+			e = nil
+		}
+		return nil, e
 	case "learning_status":
 		return a.LearningStatus(ctx), nil
 	case "learning_preview":
@@ -51,7 +76,9 @@ func (a *App) dispatch(ctx context.Context, r Request) (any, error) {
 		return a.Status(ctx), nil
 	case "doctor":
 		return a.Doctor(ctx), nil
-	case "report", "ai_preview":
+	case "ai_preview":
+		return a.advisorContext(ctx, time.Now()), nil
+	case "report":
 		return a.Report(ctx), nil
 	case "packages":
 		return a.Packages(ctx)
@@ -205,6 +232,7 @@ func (a *App) dispatch(ctx context.Context, r Request) (any, error) {
 		}
 		return a.AIStatus(), nil
 	case "ai_disable":
+		_, _ = a.AIJobStatus("", true)
 		var ai AIConfig
 		if e = readJSON(a.state("ai.json"), &ai); e != nil {
 			if os.IsNotExist(e) {
@@ -218,6 +246,7 @@ func (a *App) dispatch(ctx context.Context, r Request) (any, error) {
 		}
 		return a.AIStatus(), nil
 	case "ai_clear":
+		_, _ = a.AIJobStatus("", true)
 		if e = os.Remove(a.state("ai.json")); e != nil && !os.IsNotExist(e) {
 			return nil, e
 		}

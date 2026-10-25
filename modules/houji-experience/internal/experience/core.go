@@ -206,6 +206,9 @@ func (a *App) Install(ctx context.Context, executable string) error {
 	if e = a.initLearning(ctx); e != nil {
 		return e
 	}
+	if e = a.upgradeAI(); e != nil {
+		return e
+	}
 	// A standalone binary allows cleanup even if the Manager skips a disabled module.
 	data, e := os.ReadFile(executable)
 	if e != nil {

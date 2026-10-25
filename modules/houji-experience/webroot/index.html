@@ -14,7 +14,7 @@
     <header class="masthead">
       <div class="brand-mark" aria-hidden="true">h<span>。</span></div>
       <div><p class="eyebrow">HNHOUJI / XIAOMI 14</p><h1>Experience</h1></div>
-      <span class="version">PREVIEW<br>0.2.0</span>
+      <span class="version">PREVIEW<br>0.3.0</span>
     </header>
     <div id="bridge-warning" class="notice" hidden>Mở WebUI từ KernelSU Manager để kết nối thiết bị. Nếu Manager không hỗ trợ bridge, dùng CLI houjictl. Trang này không dùng dữ liệu mô phỏng.</div>
     <div id="notification" class="notice" role="status" aria-live="polite" hidden></div>
@@ -63,21 +63,31 @@
         <article class="card"><h3>AI đề xuất · Bạn quyết định</h3><details><summary>Thống kê sẽ gửi (không có tên package)</summary><pre id="learning-preview">Chưa tải dữ liệu.</pre></details><p class="footnote">AI nhận số liệu theo giờ, thống kê tài nguyên và tối đa 16 mã app tạm thời. Tên package chỉ nằm trong bảng đối chiếu trên máy. Không gửi lịch sử thông báo, nội dung ứng dụng hoặc khóa API trong dữ liệu thống kê.</p><div class="button-row"><button id="learning-analyze" class="primary">Phân tích thống kê ngay</button><button class="outline" data-open="apps">Duyệt &amp; đặt quy tắc ứng dụng →</button><button class="text-button" data-open="ai">Kết nối API</button></div><div id="learning-answer" class="answer" role="status" aria-live="polite">Chưa có phân tích. Không có thay đổi nào được AI tự áp dụng.</div><pre id="learning-legend" hidden></pre><button id="learning-reset" class="text-button danger-text">Xóa lịch sử &amp; phân tích đã lưu</button></article>
       </section>
       <section id="ai" role="tabpanel" aria-labelledby="tab-ai" hidden>
-        <div class="page-heading"><p class="eyebrow">TÙY CHỌN · CHỈ TƯ VẤN</p><h2>Thêm một góc nhìn</h2><p>Không có model trên máy. Gọi khi bạn yêu cầu hoặc bật lịch trong Thói quen. AI không tự áp dụng thiết lập.</p></div>
-        <article class="card"><div class="section-title"><h3>Kết nối API</h3><span id="ai-state" class="tag">Chưa cấu hình</span></div>
+        <div class="page-heading ai-heading"><p class="eyebrow">TRỢ LÝ CHO THIẾT BỊ CỦA BẠN</p><h2>Phân tích theo cách bạn dùng máy</h2><p>Đối chiếu số đo hiện tại với lịch sử, giải thích đánh đổi và lên phép thử. Bạn quyết định những thay đổi sẽ áp dụng.</p></div>
+        <div class="ai-workspace"><div class="ai-main">
+        <article class="card ai-composer"><div class="section-title"><h3>Bạn muốn ưu tiên điều gì?</h3><span class="tag">API của bạn</span></div>
+          <div class="goal-options" role="group" aria-label="Mục tiêu phân tích"><button data-goal="daily" aria-pressed="true">Hằng ngày</button><button data-goal="multitask" aria-pressed="false">Đa nhiệm</button><button data-goal="gaming" aria-pressed="false">Chơi game</button><button data-goal="cool" aria-pressed="false">Giảm tải</button></div>
+          <label for="ai-prompt">Câu hỏi hoặc điều bạn đang gặp</label><textarea id="ai-prompt" rows="4" maxlength="8192" placeholder="Ví dụ: Tôi thường chuyển giữa nhiều ứng dụng vào buổi tối. Dữ liệu có cho thấy áp lực RAM không, và nên thử thay đổi gì?"></textarea>
+          <div class="question-options"><button data-question="Đối chiếu các ngày đã đo: điều gì thay đổi, vào khung giờ nào và độ chắc chắn ra sao?">So sánh các ngày</button><button data-question="Với mục tiêu đã chọn, hãy xếp ưu tiên các thiết lập module nên thử, giải thích bằng chứng, đánh đổi và cách đo trước/sau.">Đề xuất thiết lập</button><button data-question="Dữ liệu nào còn thiếu để đánh giá vấn đề của tôi? Lập một phép thử cụ thể với tiêu chí đánh giá.">Lên phép thử</button></div>
+          <p id="ai-data-summary" class="data-summary">Đọc dữ liệu khi mở trang…</p><details><summary>Xem dữ liệu gửi kèm</summary><pre id="ai-preview">Chưa đọc dữ liệu.</pre></details>
+          <div class="button-row"><button id="ai-ask" class="primary">Phân tích</button><button id="ai-new-chat" class="text-button">Cuộc trao đổi mới</button></div><p class="footnote">Trao đổi tiếp trong phiên này để hỏi sâu hơn. Tên ứng dụng được thay bằng app-ID; không gửi nội dung ứng dụng hoặc thông báo. Xem bảng đối chiếu tại Thói quen.</p>
+        </article>
+        <div id="ai-progress" class="ai-progress" role="status" aria-live="polite" hidden><span class="spinner" aria-hidden="true"></span><div><strong id="ai-progress-title">Đang chuẩn bị phân tích…</strong><p id="ai-progress-detail">Bạn vẫn có thể chuyển trang.</p></div><button id="ai-cancel" class="outline">Hủy</button></div>
+        <div id="ai-thread" class="ai-thread"></div><div id="ai-answer" class="ai-response" aria-live="polite" hidden></div>
+        </div><aside class="ai-sidebar"><details id="api-settings" class="card" open><summary>Kết nối &amp; tùy chọn AI</summary><div class="section-title"><span id="ai-state" class="tag">Chưa cấu hình</span></div>
           <form id="api-form">
             <div class="form-grid"><div><label for="api-style">Kiểu API</label><select id="api-style"><option value="chat_completions">Chat Completions</option><option value="responses">Responses</option></select></div><div><label for="api-auth">Xác thực</label><select id="api-auth"><option value="bearer">Bearer token / API key</option><option value="none">Không xác thực (proxy riêng)</option></select></div></div>
             <label for="api-url">Base URL (bao gồm tiền tố API)</label><input id="api-url" type="url" placeholder="https://api.example.com/v1" required autocomplete="off">
             <label for="api-model">Tên model</label><input id="api-model" type="text" placeholder="Nhập model do nhà cung cấp cung cấp" required maxlength="200" autocomplete="off">
             <label for="api-key">API key / token</label><input id="api-key" type="password" placeholder="Nhập sau khi cài, không nằm trong ZIP" autocomplete="new-password" maxlength="4096"><small>Để trống để giữ khóa đã lưu cho cùng endpoint. Khóa không được đọc lại từ backend.</small>
-            <div class="form-grid"><div><label for="api-limit">Giới hạn token trả lời</label><input id="api-limit" type="number" min="64" max="2048" value="1024" required></div><div><label for="api-timeout">Timeout (giây)</label><input id="api-timeout" type="number" min="5" max="60" value="30" required></div></div>
+            <label for="api-limit">Token đầu ra · 0 = nhà cung cấp tự quyết</label><input id="api-limit" type="number" min="0" step="1" value="0" required><div class="token-options"><button type="button" data-token="0">Theo model</button><button type="button" data-token="8192">8 192</button><button type="button" data-token="16384">16 384</button></div><small>Không có trần token của module. Giới hạn thực tế phụ thuộc model/API.</small>
+            <label for="api-timeout">Thời gian chờ tối đa (giây)</label><input id="api-timeout" type="number" min="5" max="900" value="180" required>
             <label class="check"><input id="api-enabled" type="checkbox" checked> Cho phép gọi API thủ công và theo lịch đã bật trong Thói quen</label>
             <div class="button-row"><button class="primary" type="submit">Lưu cấu hình</button><button id="api-test" type="button" class="outline">Kiểm tra kết nối</button></div>
           </form>
           <div class="button-row secondary-actions"><button id="api-disable" class="text-button">Tắt AI</button><button id="api-clear" class="text-button danger-text">Xóa cấu hình &amp; khóa</button></div>
           <p class="footnote">Dùng endpoint trực tiếp hoặc proxy riêng. API có thể phát sinh phí và gửi dữ liệu tới nhà cung cấp; không tự retry. Máy root không bảo vệ khóa tuyệt đối trước tiến trình root khác.</p>
-        </article>
-        <article class="card"><h3>Phân tích theo yêu cầu</h3><label for="ai-prompt">Bạn muốn kiểm tra điều gì?</label><textarea id="ai-prompt" rows="3" maxlength="8192" placeholder="Ví dụ: Có dấu hiệu áp lực RAM trong mẫu hiện tại không?"></textarea><details><summary>Bản tóm tắt sẽ gửi kèm câu hỏi</summary><pre id="ai-preview">Mở trang để đọc bản tóm tắt.</pre></details><p class="footnote">Không gửi raw logcat, thông báo, tài liệu, serial/IMEI hoặc danh sách ứng dụng. Không cấu hình API vẫn nhận báo cáo cơ bản.</p><button id="ai-ask" class="primary">Phân tích</button><div id="ai-answer" class="answer" role="status" aria-live="polite" hidden></div></article>
+        </details><article class="card ai-help"><h3>Đọc kết quả, rồi kiểm chứng</h3><p>AI có thể đối chiếu ngày/khung giờ và giải thích vì sao một lựa chọn phù hợp. Hiệu quả của thay đổi vẫn cần đo lặp trên máy.</p><button class="outline" data-open="apps">Duyệt quy tắc ứng dụng →</button><button class="text-button" data-open="habits">Lịch sử &amp; lịch AI →</button></article></aside></div>
       </section>
       <section id="tools" role="tabpanel" aria-labelledby="tab-tools" hidden>
         <div class="page-heading"><p class="eyebrow">CHƠI GAME &amp; LÀM VIỆC</p><h2>Mở rộng trải nghiệm</h2><p>Thiết lập riêng trong từng ứng dụng. Module không tự cài APK, đổi thư viện GPU hoặc chạy container.</p></div>

@@ -18,14 +18,15 @@ import (
 )
 
 type AIConfig struct {
-	Enabled   bool   `json:"enabled"`
-	Style     string `json:"style"`
-	BaseURL   string `json:"base_url"`
-	Model     string `json:"model"`
-	Auth      string `json:"auth"`
-	Key       string `json:"key,omitempty"`
-	MaxOutput int    `json:"max_output_tokens"`
-	Timeout   int    `json:"timeout_seconds"`
+	DefaultsVersion int    `json:"defaults_version,omitempty"`
+	Enabled         bool   `json:"enabled"`
+	Style           string `json:"style"`
+	BaseURL         string `json:"base_url"`
+	Model           string `json:"model"`
+	Auth            string `json:"auth"`
+	Key             string `json:"key,omitempty"`
+	MaxOutput       int    `json:"max_output_tokens"`
+	Timeout         int    `json:"timeout_seconds"`
 }
 
 func (c *AIConfig) validate() error {
@@ -45,17 +46,37 @@ func (c *AIConfig) validate() error {
 	if strings.ContainsAny(c.Key, "\r\n") || len(c.Key) > 4096 || (c.Auth == "bearer" && c.Key == "") {
 		return errors.New("invalid or missing API key")
 	}
-	if c.MaxOutput == 0 {
-		c.MaxOutput = 1024
-	}
 	if c.Timeout == 0 {
-		c.Timeout = 30
+		c.Timeout = 180
 	}
-	if c.MaxOutput < 64 || c.MaxOutput > 2048 || c.Timeout < 5 || c.Timeout > 60 {
-		return errors.New("output limit 64..2048; timeout 5..60 seconds")
+	if c.MaxOutput < 0 || c.Timeout < 5 || c.Timeout > 900 {
+		return errors.New("output tokens must be nonnegative (0 = provider default); timeout 5..900 seconds")
 	}
 	c.BaseURL = strings.TrimRight(c.BaseURL, "/")
+	c.DefaultsVersion = 1
 	return nil
+}
+
+// One-time migration of the former small defaults. Future explicit budgets
+// saved by this version remain explicit, even when they equal an old value.
+func (a *App) upgradeAI() error {
+	var c AIConfig
+	if err := readJSON(a.state("ai.json"), &c); err != nil {
+		return nil
+	}
+	if c.DefaultsVersion >= 1 {
+		return nil
+	}
+	if c.MaxOutput == 512 || c.MaxOutput == 1024 || c.MaxOutput == 2048 {
+		c.MaxOutput = 0
+	}
+	if c.Timeout == 0 || c.Timeout == 30 {
+		c.Timeout = 180
+	}
+	if c.validate() != nil {
+		return nil
+	}
+	return atomicJSON(a.state("ai.json"), c)
 }
 
 func (a *App) AIStatus() map[string]any {
@@ -100,11 +121,11 @@ func androidTransport() *http.Transport {
 			}
 		}
 	}
-	return &http.Transport{Proxy: nil, TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}, DisableKeepAlives: true, ResponseHeaderTimeout: 30 * time.Second}
+	return &http.Transport{Proxy: nil, TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}, DisableKeepAlives: true}
 }
 
 const advisorInstruction = `Bạn tư vấn dữ liệu cho Xiaomi 14 houji 8GB, HyperOS, kernel r11 GKI 6.1.
-Chỉ trả lời cuối cùng bằng tiếng Việt, tối đa 180 từ, không nhắc lại yêu cầu hay trình bày quá trình suy nghĩ/kế hoạch phân tích. Trả lời trực tiếp bằng tối đa 4 gạch đầu dòng: tình trạng, nhận xét, dữ liệu thiếu, phép đo đề xuất.
+Trả lời cuối cùng bằng tiếng Việt, dùng Markdown dễ đọc. Trả lời đủ sâu theo câu hỏi; không giới hạn số từ/gạch đầu dòng, không kể lại quá trình suy nghĩ. Mở đầu bằng kết luận trực tiếp. Dùng các mục Nhận định, Bằng chứng, Đề xuất và Cách kiểm chứng khi phù hợp. Phân biệt số đo và suy luận; trích con số, thời gian/độ phủ. Khi thiếu dữ liệu, vẫn giải thích những gì có thể xác định và chỉ rõ phép đo bổ sung cần thiết.
 Chỉ dùng dữ liệu được cung cấp. MemAvailable_kib/1048576 là GiB RAM khả dụng. cpu_load_average_1m là số tác vụ chạy/chờ trung bình, có thể gồm chờ I/O; không phải phần trăm CPU và không đủ để kết luận nghẽn CPU.
 psi_some_avg10 và psi_full_avg10 là phần trăm thời gian chờ do áp lực bộ nhớ trong cửa sổ trung bình 10 giây; FULL chỉ thời gian tất cả tác vụ không nhàn rỗi cùng chờ. PSI không đo điện năng hoặc pin chờ; giá trị 0 trong một mẫu không chứng minh hệ thống luôn hết áp lực.
 battery_celsius đo nhiệt độ pin, không phải SoC. Một mức phần trăm pin không đủ đo tiêu hao. Không suy diễn benchmark, FPS, tiết kiệm pin hoặc nguyên nhân từ một mẫu. Ngưỡng trong báo cáo chỉ mang tính chẩn đoán.
@@ -115,6 +136,9 @@ func (a *App) Ask(ctx context.Context, prompt string, test bool) map[string]any 
 }
 
 func (a *App) askWithTransport(ctx context.Context, prompt string, test bool, transport http.RoundTripper) map[string]any {
+	if !test {
+		return a.advisorWithTransport(ctx, prompt, "daily", nil, transport)
+	}
 	return a.requestAI(ctx, prompt, test, "", "", transport)
 }
 
@@ -150,13 +174,22 @@ func (a *App) requestAI(ctx context.Context, prompt string, test bool, instructi
 		instructions = instruction
 		text = payload
 	}
+	if c.Key != "" {
+		text = strings.ReplaceAll(text, c.Key, "[REDACTED]")
+	}
 	var body any
 	route := "/chat/completions"
 	if c.Style == "responses" {
 		route = "/responses"
-		body = map[string]any{"model": c.Model, "instructions": instructions, "input": text, "max_output_tokens": c.MaxOutput, "store": false}
+		body = map[string]any{"model": c.Model, "instructions": instructions, "input": text, "store": false}
+		if c.MaxOutput > 0 {
+			body.(map[string]any)["max_output_tokens"] = c.MaxOutput
+		}
 	} else {
-		body = map[string]any{"model": c.Model, "messages": []map[string]string{{"role": "system", "content": instructions}, {"role": "user", "content": text}}, "max_completion_tokens": c.MaxOutput, "stream": false}
+		body = map[string]any{"model": c.Model, "messages": []map[string]string{{"role": "system", "content": instructions}, {"role": "user", "content": text}}, "stream": false}
+		if c.MaxOutput > 0 {
+			body.(map[string]any)["max_completion_tokens"] = c.MaxOutput
+		}
 		endpoint, _ := url.Parse(c.BaseURL)
 		if endpoint.Hostname() == "openrouter.ai" {
 			// Excludes returned reasoning, not reasoning compute/token usage.
@@ -192,8 +225,8 @@ func (a *App) requestAI(ctx context.Context, prompt string, test bool, instructi
 		a.logEvent("ai-" + code)
 		return fallback(code)
 	}
-	b, e := io.ReadAll(io.LimitReader(res.Body, 128*1024+1))
-	if e != nil || len(b) > 128*1024 {
+	b, e := io.ReadAll(io.LimitReader(res.Body, maxAIBytes+1))
+	if e != nil || len(b) > maxAIBytes {
 		return fallback("response-too-large")
 	}
 	var parsed struct {

@@ -10,7 +10,9 @@ test('WebUI is offline, has six tabs and no secret browser storage', () => {
   assert.match(html, /connect-src 'none'/);
   assert.doesNotMatch(html, /<script[^>]+src="https?:/);
   assert.doesNotMatch(source, /innerHTML|localStorage|sessionStorage|\beval\s*\(/);
-  assert.match(source, /answer\.textContent/);
+  assert.match(source, /markdown\(body,content\)/);
+  const renderer = readFileSync('webui/answer.ts', 'utf8');
+  assert.doesNotMatch(renderer, /\.innerHTML\s*=|DOMParser|createElement\(['"]script/);
 });
 
 test('bridge has fixed command and encoded data channel', () => {
