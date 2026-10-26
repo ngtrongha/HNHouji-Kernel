@@ -39,7 +39,9 @@ async function mockBridge(page) {
           if(req.mode==='daily')result={at:'2026-10-25T13:00:00Z',legend:[{id:'app-01',package:'com.example.game'}],result:{source:'api',answer:'app-01: <img src=x onerror="window.pwned=true"> xem xét daily',usage:{total_tokens:100},finish_reason:'stop',model:'actual-model',elapsed_ms:20}};
           if(window.proposalTest&&req.mode==='ask')result={source:'api',answer:'## Đề xuất\nSo sánh profile Hằng ngày.',proposal:{id:'plan-01',changes:[{kind:'app_profile',app_id:'app-01',package:'com.example.game',before:'automatic',after:'daily',reason:'Lựa chọn để đối chiếu trước/sau.'}]}};
           if(window.controlProposal&&req.mode==='ask')result={source:'api',answer:'Đo riêng tác động mạng.',proposal:{id:'control-01',changes:[{kind:'kernel_control',control:'tcp_congestion',before:'on',after:'off',reason:'Đối chiếu kết nối mới trước/sau.'}]}};
-          if(window.schemaRejected&&req.mode==='ask')result={source:'local-rules',ai_error:'http-400',structured_output_hint:true,report};
+          if(req.mode==='test')result.structured_output_verified=true;
+          if(window.schemaRejected&&req.mode==='ask')result={source:'local-rules',ai_error:'http-400',api_error_hint:'schema-rejected',report};
+          if(window.aiFailure)result={source:'local-rules',...window.aiFailure,report};
           job={id:'job-'+window.requests.length,mode:req.mode,state:'queued',started:new Date().toISOString(),result};data={...job,result:undefined};break;
         }
         case 'ai_job_status': if(job.state==='queued'||job.state==='running')job.state=window.holdAI?'running':'completed';if(job.state==='completed'&&job.mode==='daily')daily=job.result;data=job;break;
@@ -195,6 +197,27 @@ test('unsupported structured output is explained without free text fallback or r
   await expect(page.locator('#ai-answer')).toContainText('hỗ trợ Structured Outputs');
   await expect(page.locator('#ai-answer .proposal-apply')).toHaveCount(0);
   expect(await page.evaluate(()=>window.requests.filter(x=>x.req.action==='ai_job_start').length)).toBe(1);
+});
+
+for(const [name,failure,message] of [
+  ['unknown-404',{ai_error:'http-404'},'chưa xác định được lỗi'],
+  ['routing-404',{ai_error:'http-404',api_error_hint:'provider-parameters-unavailable'},'không có endpoint đáp ứng'],
+  ['legacy-hint',{ai_error:'http-404',structured_output_hint:true},'Kết quả cũ chỉ ghi nhận'],
+])test(`HTTP diagnostics distinguish ${name} without asserting schema rejection`,async({page})=>{
+  await mockBridge(page);await page.goto(url);await page.evaluate(value=>{window.aiFailure=value;},failure);
+  await page.getByRole('tab',{name:'Trợ lý AI',exact:true}).click();await page.locator('#ai-ask').click();
+  await expect(page.locator('#ai-answer')).toContainText(message);
+  await expect(page.locator('#ai-answer')).not.toContainText('JSON Schema/response_format bị từ chối');
+  await expect(page.locator('#ai-answer .proposal-apply')).toHaveCount(0);
+  expect(await page.evaluate(()=>window.requests.filter(x=>x.req.action==='ai_job_start').length)).toBe(1);
+});
+
+test('connection button reports a JSON contract probe without applying settings',async({page})=>{
+  await mockBridge(page);await page.goto(url);await page.getByRole('tab',{name:'Trợ lý AI',exact:true}).click();
+  await page.locator('#api-test').click();await expect(page.locator('#ai-answer')).toContainText('Kiểm tra JSON Schema thành công');
+  await expect(page.locator('#ai-answer')).toContainText('không bảo đảm mọi yêu cầu phân tích');
+  expect(await page.evaluate(()=>window.requests.filter(x=>x.req.action==='ai_job_start').map(x=>x.req.mode))).toEqual(['test']);
+  await expect(page.locator('#ai-answer .proposal-apply')).toHaveCount(0);
 });
 
 test('background AI shows loading, stays navigable, cancels and accepts provider token budgets',async({page})=>{

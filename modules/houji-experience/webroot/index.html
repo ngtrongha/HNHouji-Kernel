@@ -14,7 +14,7 @@
     <header class="masthead">
       <div class="brand-mark" aria-hidden="true">h<span>。</span></div>
       <div><p class="eyebrow">HNHOUJI / XIAOMI 14</p><h1>Experience</h1></div>
-      <span class="version">PREVIEW<br>0.6.0</span>
+      <span class="version">PREVIEW<br>0.6.1</span>
     </header>
     <div id="bridge-warning" class="notice" hidden>Mở WebUI từ KernelSU Manager để kết nối thiết bị. Nếu Manager không hỗ trợ bridge, dùng CLI houjictl. Trang này không dùng dữ liệu mô phỏng.</div>
     <div id="notification" class="notice" role="status" aria-live="polite" hidden></div>
@@ -87,7 +87,7 @@
             <label for="api-limit">Token đầu ra · 0 = nhà cung cấp tự quyết</label><input id="api-limit" type="number" min="0" step="1" value="0" required><div class="token-options"><button type="button" data-token="0">Theo model</button><button type="button" data-token="8192">8 192</button><button type="button" data-token="16384">16 384</button></div><small>Không có trần token của module. Giới hạn thực tế phụ thuộc model/API.</small>
             <label for="api-timeout">Thời gian chờ tối đa (giây)</label><input id="api-timeout" type="number" min="5" max="900" value="180" required>
             <label class="check"><input id="api-enabled" type="checkbox" checked> Cho phép gọi API thủ công và theo lịch đã bật trong Thói quen</label>
-            <p class="footnote">Phân tích và áp dụng cần model/provider hỗ trợ Structured Outputs (JSON Schema strict). Kiểm tra kết nối chỉ xác nhận API truy cập được.</p><div class="button-row"><button class="primary" type="submit">Lưu cấu hình</button><button id="api-test" type="button" class="outline">Kiểm tra kết nối</button></div>
+            <p class="footnote">Phân tích và áp dụng cần model/provider hỗ trợ Structured Outputs (JSON Schema strict). Kiểm tra kết nối thử hợp đồng JSON với câu hỏi không chứa dữ liệu thiết bị; không áp dụng cài đặt.</p><div class="button-row"><button class="primary" type="submit">Lưu cấu hình</button><button id="api-test" type="button" class="outline">Kiểm tra kết nối & JSON</button></div>
           </form>
           <div class="button-row secondary-actions"><button id="api-disable" class="text-button">Tắt AI</button><button id="api-clear" class="text-button danger-text">Xóa cấu hình &amp; khóa</button></div>
           <p class="footnote">Dùng endpoint trực tiếp hoặc proxy riêng. API có thể phát sinh phí và gửi dữ liệu tới nhà cung cấp; không tự retry. Máy root không bảo vệ khóa tuyệt đối trước tiến trình root khác.</p>

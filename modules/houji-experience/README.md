@@ -1,4 +1,4 @@
-# HNHouji Experience 0.6.0-preview
+# HNHouji Experience 0.6.1-preview
 
 Module KernelSU độc lập cho Xiaomi 14 **houji**, arm64, GKI 6.1 và user 0.
 WebUI mở trong Manager; CLI là phương án dự phòng. Không cần metamodule,
@@ -7,6 +7,13 @@ defconfig, pin/driver và không đóng gói model AI.
 
 **Preview chưa được chứng nhận trên thiết bị.** Test máy phát triển và mock
 Android không thay thế thử nghiệm reboot, thông báo, game và pin chờ trên houji.
+
+## Sửa lỗi 0.6.1-preview
+
+- HTTP 404 không còn tự động bị kết luận là nhà cung cấp từ chối JSON Schema. Chỉ phân loại từ JSON lỗi đầy đủ, tối đa 64 KiB; không lưu/hiện raw response, thông tin tài khoản hoặc khóa API. Lỗi endpoint/model, thiếu provider theo tham số và chính sách được phân biệt khi có bằng chứng; thiếu bằng chứng hiện chưa xác định.
+- **Kiểm tra kết nối & JSON** dùng cùng định dạng schema và yêu cầu hỗ trợ tham số như phân tích, với câu hỏi không chứa dữ liệu thiết bị. Chỉ xác nhận thành công khi phản hồi hoàn tất, JSON hợp lệ và actions rỗng; không tạo đề xuất/receipt hoặc áp dụng cài đặt. Thành công không bảo đảm router miễn phí luôn có provider cho mọi phân tích sau đó.
+- Chat Completions qua OpenRouter dùng `max_tokens` khi có ngân sách tường minh; các endpoint Chat khác giữ `max_completion_tokens`, Responses giữ `max_output_tokens`. Giá trị 0 vẫn bỏ tham số. Không tự đổi model, hạ schema, sửa quyền riêng tư hoặc retry khi không tìm được provider.
+- `openrouter/free` có hỗ trợ lọc Structured Outputs theo [tài liệu OpenRouter](https://openrouter.ai/docs/guides/routing/routers/free-router); lỗi ảnh chụp chỉ xác nhận HTTP 404. Nút kiểm tra văn bản cũ thành công chưa đủ xác định nguyên nhân của yêu cầu phân tích.
 
 ## Mới trong 0.6.0-preview
 
@@ -164,7 +171,7 @@ Proxy riêng có thể chọn không xác thực, nhưng nên có token nếu pu
 - Chat Completions gửi `messages`, `stream:false`.
   Endpoint phải hỗ trợ các trường này; nếu nhà cung cấp dùng giao thức khác,
   dùng proxy chuyển đổi. Responses gửi `input`, `instructions`,
-  `store:false`. Chỉ gửi `max_completion_tokens`/`max_output_tokens` khi bạn
+  `store:false`. Chỉ gửi `max_tokens` (OpenRouter Chat), `max_completion_tokens` (Chat khác) hoặc `max_output_tokens` khi bạn
   chọn một ngân sách token dương.
 - Token mặc định **0 = theo nhà cung cấp**, bỏ trường token khỏi request. Không
   có trần token 2048 của module; có thể nhập 8192, 16384 hoặc số dương khác.
@@ -174,7 +181,7 @@ Proxy riêng có thể chọn không xác thực, nhưng nên có token nếu pu
   Một yêu cầu/lần, không tự retry. Không tự tiếp tục khi model cắt phản hồi.
 - **Lưu cấu hình API không gọi mạng.** Gọi khi bấm Kiểm tra kết nối/Phân tích,
   hoặc theo lịch hằng ngày bạn bật riêng trong **Thói quen**.
-  Kiểm tra kết nối không gửi telemetry. API có thể phát sinh phí.
+  Kiểm tra kết nối & JSON không gửi telemetry, yêu cầu schema và actions rỗng; không áp dụng cài đặt. API có thể phát sinh phí.
 - Để trống khóa để giữ khóa cũ **chỉ khi endpoint/auth không đổi**. Đổi endpoint
   phải nhập lại khóa, tránh tự chuyển credential sang host khác.
 - Khóa lưu ở `/data/adb/houji-experience/ai.json` (0600, thư mục 0700), không trả
@@ -418,7 +425,7 @@ binary thuần Go CGO=0 dù cross-compile thành công. Không build bằng `net
 Go runtime được link vào binary; license BSD kèm ZIP. Không có dependency Go
 bên thứ ba hoặc HTTP server chạy nền.
 
-Đầu ra `dist/HNHouji-Experience-0.6.0-preview.zip`, checksum và manifest; không
+Đầu ra `dist/HNHouji-Experience-0.6.1-preview.zip`, checksum và manifest; không
 đưa source test, node_modules, model, key hay state vào ZIP. Build metadata nằm
 trong manifest. Build riêng tạo ZIP generic; khi được workflow kernel gọi,
 tạo ZIP có hậu tố bản kernel/hash và metadata nhúng. Workflow module không tự

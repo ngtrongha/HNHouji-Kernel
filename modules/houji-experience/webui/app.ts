@@ -188,6 +188,8 @@ function showAnswer(result: any, target = "ai-answer") {
   answer.className="ai-response";answer.replaceChildren();
   // Never render provider output as HTML, Markdown HTML, JS or shell commands.
   const errors: Record<string,string> = {
+    "http-404":"API trả HTTP 404: chưa xác định được lỗi nằm ở đường dẫn, model hay định tuyến nhà cung cấp. Một lần kiểm tra văn bản thành công không xác nhận yêu cầu phân tích JSON Schema sẽ chạy được.",
+    "schema-probe-invalid":"API truy cập được nhưng không trả đúng hợp đồng JSON Schema hoặc đề xuất thay đổi trong lần kiểm tra. Chưa xác nhận dùng được cho phân tích; chưa thay đổi cài đặt.",
     "response-too-large":"Phản hồi API vượt 8 MiB dữ liệu, gồm cả metadata/reasoning nếu nhà cung cấp gửi. Đây là giới hạn bộ nhớ, không phải token. Chọn ngân sách đầu ra nhỏ hơn hoặc model khác rồi thử thủ công.",
     "response-read-failed":"Kết nối bị ngắt hoặc lỗi trong lúc nhận phản hồi API. Chưa nhận được kết quả đầy đủ; không tự gửi lại. Kiểm tra mạng rồi thử thủ công.",
     "timeout":"API quá thời gian chờ. Có thể tăng thời gian chờ trong cấu hình API rồi thử thủ công; không tự gửi lại.",
@@ -204,7 +206,16 @@ function showAnswer(result: any, target = "ai-answer") {
   const content = result.source === "api" ? result.answer : `Báo cáo cơ bản · ${errors[result.ai_error] || result.ai_error || "không dùng AI"}\n\n${(result.report?.advice || []).join("\n\n")}`;
   const head=document.createElement("div");head.className="response-heading";const title=document.createElement("strong");title.textContent=result.source==="api"?"Phân tích AI":"Nhận xét cục bộ";const model=document.createElement("span");model.textContent=result.model || (result.source==="api"?"Model không cung cấp tên":"Quy tắc cục bộ");head.append(title,model);answer.append(head);
   const body=document.createElement("div");body.className="response-body";markdown(body,content);answer.append(body);
-  if(result.structured_output_hint){const hint=document.createElement("p");hint.className="notice error";hint.textContent="Nhà cung cấp từ chối yêu cầu có JSON Schema. Kiểm tra model/endpoint có hỗ trợ Structured Outputs, quyền truy cập và cấu hình API. Module không hạ xuống văn bản tự do hoặc tự gọi lại.";answer.append(hint);}
+  const diagnostics:Record<string,string>={
+    "schema-rejected":"Phản hồi lỗi API chỉ ra JSON Schema/response_format bị từ chối. Kiểm tra model/provider có hỗ trợ Structured Outputs và schema của yêu cầu.",
+    "provider-parameters-unavailable":"Nhà cung cấp báo không có endpoint đáp ứng các tham số yêu cầu. Với openrouter/free, kiểm tra model miễn phí hỗ trợ Structured Outputs và ngân sách token; có thể chọn model :free cụ thể. Chưa đủ bằng chứng kết luận schema sai.",
+    "provider-policy-unavailable":"Nhà cung cấp báo không có endpoint phù hợp chính sách dữ liệu/quyền provider hiện tại. Kiểm tra cấu hình tài khoản; module không tự thay quyền riêng tư.",
+    "provider-unavailable":"Nhà cung cấp báo không tìm thấy endpoint cho yêu cầu/model hiện tại. Kiểm tra tên model và khả năng cung cấp; chưa đủ bằng chứng kết luận lỗi JSON Schema.",
+    "model-not-found":"API báo không tìm thấy model. Kiểm tra ID model chính xác và quyền truy cập."
+  };
+  const diagnostic=diagnostics[result.api_error_hint] || (result.structured_output_hint?"Kết quả cũ chỉ ghi nhận yêu cầu có JSON Schema thất bại; chưa đủ dữ liệu xác định nguyên nhân.":"");
+  if(diagnostic){const hint=document.createElement("p");hint.className="notice error";hint.textContent=`${diagnostic} Module giữ JSON Schema, không tự gọi lại hoặc áp dụng cài đặt.`;answer.append(hint);}
+  if(result.structured_output_verified){const hint=document.createElement("p");hint.className="notice";hint.textContent="Kiểm tra JSON Schema thành công với câu hỏi không chứa dữ liệu thiết bị. Không áp dụng cài đặt; kết quả không bảo đảm mọi yêu cầu phân tích sau này đều thành công.";answer.append(hint);}
   renderProposal(answer,result);
   if(result.app_legend?.length){const details=document.createElement("details");const summary=document.createElement("summary");summary.textContent="Đối chiếu ứng dụng · Chỉ trên máy";const list=document.createElement("ul");for(const item of result.app_legend){const li=document.createElement("li");li.textContent=`${item.id} · ${item.package}`;list.append(li);}details.append(summary,list);answer.append(details);}
   if(result.usage){const details=document.createElement("details");const summary=document.createElement("summary");const usage=result.usage;summary.textContent=`${((result.elapsed_ms || 0)/1000).toLocaleString("vi-VN",{maximumFractionDigits:1})} giây · ${usage.total_tokens ?? ((usage.prompt_tokens ?? usage.input_tokens ?? 0)+(usage.completion_tokens ?? usage.output_tokens ?? 0))} token`;const info=document.createElement("p");info.textContent=`Model: ${result.model || "không cung cấp"} · Kết thúc: ${result.finish_reason || "không cung cấp"} · Đầu vào: ${usage.prompt_tokens ?? usage.input_tokens ?? "—"} · Đầu ra: ${usage.completion_tokens ?? usage.output_tokens ?? "—"}${usage.reasoning_tokens!==undefined?` · Reasoning: ${usage.reasoning_tokens}`:""}`;details.append(summary,info);answer.append(details);}

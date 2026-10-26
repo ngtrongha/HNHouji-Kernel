@@ -140,7 +140,21 @@ func (a *App) askWithTransport(ctx context.Context, prompt string, test bool, tr
 	if !test {
 		return a.advisorWithTransport(ctx, prompt, "daily", nil, transport)
 	}
-	return a.requestAI(ctx, prompt, test, "", "", nil, transport)
+	// Probe the analysis contract without sending device/app evidence or storing a plan.
+	knobs := []KernelKnob{{Control: "swap_readahead"}, {Control: "tcp_congestion"}, {Control: "data_fsync"}}
+	result := a.requestAI(ctx, prompt, true, `Trả JSON theo schema: answer là "Kết nối JSON Schema hoạt động.", actions là []. Không đề xuất thay đổi.`, "Kiểm tra hợp đồng phản hồi, không có dữ liệu thiết bị.", proposalSchema(nil, Config{}, knobs, false, false), transport)
+	if result["source"] == "api" {
+		answer, actions, err := decodeProposal(result["answer"].(string))
+		if err != nil || !json.Valid([]byte(result["answer"].(string))) || len(actions) != 0 {
+			delete(result, "answer")
+			result["source"] = "local-rules"
+			result["ai_error"] = "schema-probe-invalid"
+		} else {
+			result["answer"] = answer
+			result["structured_output_verified"] = true
+		}
+	}
+	return result
 }
 
 func (a *App) requestAI(ctx context.Context, prompt string, test bool, instruction, payload string, schema map[string]any, transport http.RoundTripper) map[string]any {
@@ -188,10 +202,14 @@ func (a *App) requestAI(ctx context.Context, prompt string, test bool, instructi
 		}
 	} else {
 		body = map[string]any{"model": c.Model, "messages": []map[string]string{{"role": "system", "content": instructions}, {"role": "user", "content": text}}, "stream": false}
-		if c.MaxOutput > 0 {
-			body.(map[string]any)["max_completion_tokens"] = c.MaxOutput
-		}
 		endpoint, _ := url.Parse(c.BaseURL)
+		if c.MaxOutput > 0 {
+			key := "max_completion_tokens"
+			if endpoint.Hostname() == "openrouter.ai" {
+				key = "max_tokens"
+			}
+			body.(map[string]any)[key] = c.MaxOutput
+		}
 		if endpoint.Hostname() == "openrouter.ai" {
 			// Excludes returned reasoning, not reasoning compute/token usage.
 			// Do not force reasoning off: some routed models require it.
@@ -238,8 +256,14 @@ func (a *App) requestAI(ctx context.Context, prompt string, test bool, instructi
 		code := fmt.Sprintf("http-%d", res.StatusCode)
 		a.logEvent("ai-" + code)
 		result := fallback(code)
-		if schema != nil && (res.StatusCode == 400 || res.StatusCode == 404 || res.StatusCode == 422) {
-			result["structured_output_hint"] = true
+		if res.StatusCode == 400 || res.StatusCode == 404 || res.StatusCode == 422 {
+			// Only complete bounded JSON errors may identify a cause; never expose their body.
+			b, readErr := io.ReadAll(io.LimitReader(res.Body, maxAIErrorBytes+1))
+			if readErr == nil && len(b) <= maxAIErrorBytes {
+				if hint := aiHTTPHint(b, schema != nil); hint != "" {
+					result["api_error_hint"] = hint
+				}
+			}
 		}
 		return result
 	}
@@ -388,6 +412,39 @@ func (a *App) requestAI(ctx context.Context, prompt string, test bool, instructi
 	}
 	a.logEvent("ai-success")
 	return withMetadata(map[string]any{"source": "api", "answer": answer})
+}
+
+const maxAIErrorBytes = 64 * 1024
+
+func aiHTTPHint(body []byte, structured bool) string {
+	var response struct {
+		Error struct {
+			Message string `json:"message"`
+			Param   string `json:"param"`
+			Code    any    `json:"code"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(body, &response) != nil {
+		return ""
+	}
+	message := strings.ToLower(response.Error.Message)
+	code, _ := response.Error.Code.(string)
+	if strings.Contains(message, "no endpoints found") || strings.Contains(message, "no allowed providers") {
+		if strings.Contains(message, "data policy") || strings.Contains(message, "privacy") || strings.Contains(message, "no allowed providers") {
+			return "provider-policy-unavailable"
+		}
+		if strings.Contains(message, "parameters") || strings.Contains(message, "support") {
+			return "provider-parameters-unavailable"
+		}
+		return "provider-unavailable"
+	}
+	if code == "model_not_found" || strings.Contains(message, "not a valid model id") || strings.Contains(message, "model not found") || strings.Contains(message, "model does not exist") {
+		return "model-not-found"
+	}
+	if structured && (code == "invalid_json_schema" || response.Error.Param == "response_format" || response.Error.Param == "text.format" || strings.Contains(message, "json_schema") || strings.Contains(message, "json schema") || strings.Contains(message, "response_format") || strings.Contains(message, "structured output")) {
+		return "schema-rejected"
+	}
+	return ""
 }
 
 func redactAI(text, key string) string {

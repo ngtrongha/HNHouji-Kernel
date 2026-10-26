@@ -120,7 +120,7 @@ func TestTokenLimitsAreProviderControlledAndLargeAnswersSupported(t *testing.T) 
 				b, _ := json.Marshal(response)
 				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(string(b))), Header: http.Header{}}, nil
 			})
-			if r := a.askWithTransport(context.Background(), "", true, tr); r["source"] != "api" {
+			if r := a.requestAI(context.Background(), "", true, "", "", nil, tr); r["source"] != "api" {
 				t.Fatal(r)
 			}
 		}
@@ -198,7 +198,7 @@ func TestAITestOmitsTelemetry(t *testing.T) {
 		if strings.Contains(string(b), "metrics") || strings.Contains(string(b), "MemTotal") {
 			t.Fatal("test sends device report")
 		}
-		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"choices":[{"finish_reason":"stop","message":{"content":"ok"}}]}`)), Header: http.Header{}}, nil
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(completedResponse(t, "chat_completions", `{"answer":"ok","actions":[]}`))), Header: http.Header{}}, nil
 	})
 	if r := a.askWithTransport(context.Background(), "", true, tr); r["source"] != "api" {
 		t.Fatal(r)

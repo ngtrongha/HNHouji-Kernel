@@ -111,10 +111,10 @@ func TestSchemaRejectionDoesNotRetryOrDowngrade(t *testing.T) {
 	calls := 0
 	tr := transportFunc(func(*http.Request) (*http.Response, error) {
 		calls++
-		return &http.Response{StatusCode: 400, Body: io.NopCloser(strings.NewReader("test-secret provider details")), Header: http.Header{}}, nil
+		return &http.Response{StatusCode: 400, Body: io.NopCloser(strings.NewReader(`{"error":{"message":"test-secret invalid JSON Schema","code":"invalid_json_schema"}}`)), Header: http.Header{}}, nil
 	})
 	r := a.advisorWithTransport(context.Background(), "Phân tích", "daily", nil, tr)
-	if r["structured_output_hint"] != true || r["ai_error"] != "http-400" || calls != 1 || f.writes != 0 || strings.Contains(pretty(r), "test-secret") {
+	if r["api_error_hint"] != "schema-rejected" || r["ai_error"] != "http-400" || calls != 1 || f.writes != 0 || strings.Contains(pretty(r), "test-secret") {
 		t.Fatal(r["ai_error"], calls)
 	}
 }

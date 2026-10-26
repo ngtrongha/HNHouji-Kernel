@@ -33,7 +33,7 @@ func TestAIResponseAboveOldByteLimitPersists(t *testing.T) {
 			c := aiConfig("https://example.test/v1", style)
 			c.MaxOutput = 0
 			must(t, a.saveAI(c))
-			body := completedResponse(t, style, answer)
+			body := completedResponse(t, style, pretty(map[string]any{"answer": answer, "actions": []AIAction{}}))
 			if len(body) <= 2*1024*1024 || len(body) > maxAIResponseBytes {
 				t.Fatal("fixture does not exercise previous limit")
 			}
@@ -72,7 +72,7 @@ func TestAIResponseByteBoundary(t *testing.T) {
 				calls++
 				return &http.Response{StatusCode: 200, Body: io.NopCloser(body), Header: http.Header{}}, nil
 			})
-			result := a.askWithTransport(context.Background(), "", true, tr)
+			result := a.requestAI(context.Background(), "", true, "", "", nil, tr)
 			if excess == 0 {
 				if result["source"] != "api" {
 					t.Fatal(style, "exact byte limit rejected", result["ai_error"])
