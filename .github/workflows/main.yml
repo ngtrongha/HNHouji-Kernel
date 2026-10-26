@@ -196,6 +196,9 @@ jobs:
               ;;
           esac
 
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
       - name: Resolve latest component commits
         id: resolve
         shell: bash
@@ -382,9 +385,8 @@ jobs:
           esac
           echo "root_matrix=$ROOT_MATRIX" >> "$GITHUB_OUTPUT"
 
-          # SUSFS per supported Android/kernel branch (gitlab simonpunk/susfs4ksu).
-          # Always emit the verified pinned SHA here; build.yml overrides to the
-          # latest branch tip per-variant when the root flavor is KernelSU-Next.
+          # Resolve only selected SUSFS branches, once per branch in latest/update.
+          # Verified keeps independent root pins; Next resolves latest in build.yml.
           declare -A SUSFS_BRANCHES=(
             [susfs_commit_android12_5_10]="gki-android12-5.10"
             [susfs_commit_android13_5_10]="gki-android13-5.10"
@@ -394,13 +396,26 @@ jobs:
             [susfs_commit_android15_6_6]="gki-android15-6.6"
             [susfs_commit_android16_6_12]="gki-android16-6.12"
           )
-          for key in "${!SUSFS_BRANCHES[@]}"; do
-            emit "$key" "$(pick "${PIN_SUSFS[$key]}" https://gitlab.com/simonpunk/susfs4ksu.git refs/heads/${SUSFS_BRANCHES[$key]})"
-            # Per-flavor ReSukiSU SUSFS pin (same branch, own pin set).
-            emit "${key}_resukisu" "$(pick "${PIN_SUSFS_RESUKISU[$key]}" https://gitlab.com/simonpunk/susfs4ksu.git refs/heads/${SUSFS_BRANCHES[$key]})"
-            # Per-flavor SukiSU-Ultra SUSFS pin (same branch, own pin set).
-            emit "${key}_sukisu_ultra" "$(pick "${PIN_SUSFS_SUKISU_ULTRA[$key]}" https://gitlab.com/simonpunk/susfs4ksu.git refs/heads/${SUSFS_BRANCHES[$key]})"
-          done
+          if [ "$SCHED_SUSFS" = "true" ]; then
+            KERNEL_SELECTION="${{ inputs.kernel_build_version || 'All' }}"
+            for key in "${!SUSFS_BRANCHES[@]}"; do
+              branch="${SUSFS_BRANCHES[$key]}"
+              version="${branch#gki-}"
+              if [ "$KERNEL_SELECTION" != "All" ] && [ "$KERNEL_SELECTION" != "${version#*-}.x-${version%%-*}" ]; then
+                continue
+              fi
+              if [ "$COMMIT_MODE" = "verified" ]; then
+                emit "$key" "${PIN_SUSFS[$key]}"
+                emit "${key}_resukisu" "${PIN_SUSFS_RESUKISU[$key]}"
+                emit "${key}_sukisu_ultra" "${PIN_SUSFS_SUKISU_ULTRA[$key]}"
+              else
+                SUSFS_SHA="$(python3 .github/scripts/resolve_susfs.py "$branch")"
+                emit "$key" "$SUSFS_SHA"
+                emit "${key}_resukisu" "$SUSFS_SHA"
+                emit "${key}_sukisu_ultra" "$SUSFS_SHA"
+              fi
+            done
+          fi
 
           # Tracked build helpers (resolved automatically, before the run)
           emit kernel_patches_commit "$(resolve_sha https://github.com/WildKernels/kernel_patches.git refs/heads/main)"
