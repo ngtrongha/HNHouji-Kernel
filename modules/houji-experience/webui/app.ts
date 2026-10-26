@@ -52,7 +52,7 @@ function render(status: any) {
   text("kernel-sync", status.kernel_sync?.message || "Chưa có kết quả xác minh kernel.");
   input("kernel-tuning").checked = !!status.config?.kernel_tuning;
   const knobs = $("kernel-knobs"); knobs.replaceChildren();
-  const states: Record<string,string> = { available:"Chờ áp dụng", waiting:"Chưa áp dụng", unsupported:"Bỏ qua · thiếu điều kiện hỗ trợ", applied:"Module đã áp dụng", "already-set":"Đã có sẵn · không ghi", "pending-restore":"Chờ hoàn tác", conflict:"Xung đột · giữ thay đổi bên ngoài" };
+  const states: Record<string,string> = { disabled:"Đã tắt riêng mục này", available:"Chờ áp dụng", waiting:"Chưa áp dụng", unsupported:"Bỏ qua · thiếu điều kiện hỗ trợ", applied:"Module đã áp dụng", "already-set":"Đã có sẵn · không ghi", "pending-restore":"Chờ hoàn tác", conflict:"Xung đột · giữ thay đổi bên ngoài" };
   for (const knob of status.kernel_tuning?.knobs || []) {
     const row = document.createElement("div"); row.className = "app-row";
     const title = document.createElement("strong"); title.textContent = knob.label;
@@ -184,12 +184,15 @@ function showAnswer(result: any, target = "ai-answer") {
   const content = result.source === "api" ? result.answer : `Báo cáo cơ bản · ${errors[result.ai_error] || result.ai_error || "không dùng AI"}\n\n${(result.report?.advice || []).join("\n\n")}`;
   const head=document.createElement("div");head.className="response-heading";const title=document.createElement("strong");title.textContent=result.source==="api"?"Phân tích AI":"Nhận xét cục bộ";const model=document.createElement("span");model.textContent=result.model || (result.source==="api"?"Model không cung cấp tên":"Quy tắc cục bộ");head.append(title,model);answer.append(head);
   const body=document.createElement("div");body.className="response-body";markdown(body,content);answer.append(body);
+  if(result.structured_output_hint){const hint=document.createElement("p");hint.className="notice error";hint.textContent="Nhà cung cấp từ chối yêu cầu có JSON Schema. Kiểm tra model/endpoint có hỗ trợ Structured Outputs, quyền truy cập và cấu hình API. Module không hạ xuống văn bản tự do hoặc tự gọi lại.";answer.append(hint);}
   renderProposal(answer,result);
   if(result.app_legend?.length){const details=document.createElement("details");const summary=document.createElement("summary");summary.textContent="Đối chiếu ứng dụng · Chỉ trên máy";const list=document.createElement("ul");for(const item of result.app_legend){const li=document.createElement("li");li.textContent=`${item.id} · ${item.package}`;list.append(li);}details.append(summary,list);answer.append(details);}
   if(result.usage){const details=document.createElement("details");const summary=document.createElement("summary");const usage=result.usage;summary.textContent=`${((result.elapsed_ms || 0)/1000).toLocaleString("vi-VN",{maximumFractionDigits:1})} giây · ${usage.total_tokens ?? ((usage.prompt_tokens ?? usage.input_tokens ?? 0)+(usage.completion_tokens ?? usage.output_tokens ?? 0))} token`;const info=document.createElement("p");info.textContent=`Model: ${result.model || "không cung cấp"} · Kết thúc: ${result.finish_reason || "không cung cấp"} · Đầu vào: ${usage.prompt_tokens ?? usage.input_tokens ?? "—"} · Đầu ra: ${usage.completion_tokens ?? usage.output_tokens ?? "—"}${usage.reasoning_tokens!==undefined?` · Reasoning: ${usage.reasoning_tokens}`:""}`;details.append(summary,info);answer.append(details);}
 }
 
 function proposalMessage(code:string):string {
+  if(code==="proposal-kernel-preset-off")return "Bật công tắc preset kernel trước hoặc chọn đề xuất bật preset cùng lượt.";
+  if(code==="proposal-format-invalid")return "Nhà cung cấp trả sai hợp đồng JSON Schema. Chọn model hỗ trợ Structured Outputs; module chưa thay đổi cài đặt và không đoán lệnh từ văn bản.";
   if(code==="proposal-pressure")return "Đang có áp lực bộ nhớ hoặc trạng thái nhiệt cao; chưa tự tăng chế độ game/bật preset.";
   if(code==="proposal-pressure-unknown")return "Chưa đọc đủ PSI/trạng thái nhiệt để tự tăng chế độ game/bật preset.";
   if(code==="proposal-kernel-unsupported")return "Preset chưa có mục hỗ trợ trên thiết bị hiện tại; chưa bật.";
@@ -209,7 +212,8 @@ function renderProposal(container:HTMLElement,result:any){
   const section=document.createElement("div");section.className="proposal-card";
   const title=document.createElement("h4");title.textContent="Các thay đổi được đề xuất";section.append(title);
   const names:Record<string,string>={...labels,automatic:"Tự chọn",on:"Bật",off:"Tắt"};
-  for(const change of plan.changes || []){const row=document.createElement("div");row.className="proposal-change";const label=document.createElement("strong");label.textContent=change.kind==="app_profile"?`${change.app_id} · ${change.package}`:"Preset kernel Hằng ngày";const values=document.createElement("p");values.textContent=`${names[change.before] || change.before} → ${names[change.after] || change.after}`;const reason=document.createElement("p");reason.textContent=change.reason;row.append(label,values,reason);section.append(row);}
+  const controls:Record<string,string>={swap_readahead:"Đọc đón swap · target 0",tcp_congestion:"TCP congestion · target BBR",data_fsync:"Fsync /data · target 20"};
+  for(const change of plan.changes || []){const row=document.createElement("div");row.className="proposal-change";const label=document.createElement("strong");label.textContent=change.kind==="app_profile"?`${change.app_id} · ${change.package}`:change.kind==="kernel_control"?controls[change.control] || change.control:"Preset kernel Hằng ngày";const values=document.createElement("p");values.textContent=`${names[change.before] || change.before} → ${names[change.after] || change.after}`;const reason=document.createElement("p");reason.textContent=change.reason;row.append(label,values,reason);section.append(row);}
   const status=document.createElement("p");status.className="footnote";
   const receipt=lastApplication.proposal_id===plan.id?lastApplication:result.application;
   status.textContent=receipt?.status==="applied"?"Đã lưu cấu hình. Watcher áp dụng khi đủ điều kiện; có thể hoàn tác lượt gần nhất.":receipt?.status==="undone"?"Đề xuất này đã được hoàn tác. Phân tích lại để lấy đề xuất mới.":receipt?.error?proposalMessage(receipt.error):"Chỉ các thay đổi trong bảng này được áp dụng sau khi kiểm tra lại kernel và cấu hình.";

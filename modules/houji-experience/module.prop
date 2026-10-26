@@ -1,6 +1,6 @@
 id=houji_experience
 name=HNHouji Experience
-version=0.4.1-preview
-versionCode=401
+version=0.5.0-preview
+versionCode=500
 author=HNHouji
 description=Daily profiles, private usage learning, reviewed AI proposals and opt-in scheduled application with undo. Requires matching houji kernel metadata. Preview.

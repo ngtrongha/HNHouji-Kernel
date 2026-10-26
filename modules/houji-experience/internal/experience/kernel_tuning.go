@@ -12,6 +12,8 @@ import (
 
 type KernelKnob struct {
 	ID      string `json:"id"`
+	Control string `json:"control"`
+	Enabled bool   `json:"enabled"`
 	Label   string `json:"label"`
 	Target  string `json:"target"`
 	Current string `json:"current,omitempty"`
@@ -23,6 +25,38 @@ type KernelKnob struct {
 var blockNameRE = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 var tcpNameRE = regexp.MustCompile(`^[a-z0-9_]{1,32}$`)
 var zramSwapRE = regexp.MustCompile(`^/dev/(?:block/)?zram[0-9]+$`)
+
+func validKernelControl(id string) bool {
+	return id == "swap_readahead" || id == "tcp_congestion" || id == "data_fsync"
+}
+func kernelControlForKnob(id string) string {
+	switch id {
+	case "vm.page-cluster":
+		return "swap_readahead"
+	case "tcp.congestion":
+		return "tcp_congestion"
+	}
+	if strings.HasPrefix(id, "f2fs:") {
+		return "data_fsync"
+	}
+	return ""
+}
+func kernelControlEnabled(c Config, id string) bool {
+	on, saved := c.KernelControls[id]
+	return !saved || on
+}
+
+func (a *App) configuredKernelPlan(c Config) []KernelKnob {
+	plan := a.kernelPlan()
+	for i := range plan {
+		plan[i].Control = kernelControlForKnob(plan[i].ID)
+		if plan[i].ID == "f2fs" {
+			plan[i].Control = "data_fsync"
+		}
+		plan[i].Enabled = kernelControlEnabled(c, plan[i].Control)
+	}
+	return plan
+}
 
 // This allowlist is shared by application and recovery. Neither RPC nor journal
 // can introduce an arbitrary writable path, shell command or kernel parameter.
@@ -188,7 +222,7 @@ func (a *App) tuneKernel(ctx context.Context, c Config, j *Journal) error {
 	if !c.KernelTuning {
 		return a.restoreEntries(ctx, j, func(e Entry) bool { return e.Kind == "kernel" })
 	}
-	plan := a.kernelPlan()
+	plan := a.configuredKernelPlan(c)
 	for i, entry := range j.Entries {
 		if entry.Kind != "kernel" {
 			continue
@@ -209,7 +243,7 @@ func (a *App) tuneKernel(ctx context.Context, c Config, j *Journal) error {
 	}
 	eligible := map[string]bool{}
 	for _, knob := range plan {
-		if knob.State == "available" {
+		if knob.State == "available" && knob.Enabled {
 			eligible[knob.ID] = true
 		}
 	}
@@ -217,7 +251,7 @@ func (a *App) tuneKernel(ctx context.Context, c Config, j *Journal) error {
 		return err
 	}
 	for _, knob := range plan {
-		if knob.State != "available" {
+		if knob.State != "available" || !knob.Enabled {
 			continue
 		}
 		// Existing entries passed the preflight above. Never fight subsequent
@@ -238,12 +272,14 @@ func (a *App) tuneKernel(ctx context.Context, c Config, j *Journal) error {
 }
 
 func (a *App) kernelTuningStatus(ctx context.Context, c Config, sync KernelSync, j Journal) map[string]any {
-	knobs := a.kernelPlan()
+	knobs := a.configuredKernelPlan(c)
 	active := c.Enabled && c.KernelTuning && sync.Ready && a.ownerUser(ctx) && !a.moduleDisabled() && !exists(a.Paths.Legacy) && (c.MigrationBoot == "" || c.MigrationBoot != a.bootID())
 	for i := range knobs {
 		knob := &knobs[i]
 		if knob.State == "available" {
-			if !active {
+			if !knob.Enabled {
+				knob.State = "disabled"
+			} else if !active {
 				knob.State = "waiting"
 			} else if knob.Current == knob.Target {
 				knob.State = "already-set"
@@ -253,7 +289,7 @@ func (a *App) kernelTuningStatus(ctx context.Context, c Config, sync KernelSync,
 			if entry.Kind == "kernel" && entry.Package == knob.ID {
 				knob.Before = entry.Before
 				knob.State = "pending-restore"
-				if active && knob.Current == entry.Applied {
+				if active && knob.Enabled && knob.Current == entry.Applied {
 					knob.State = "applied"
 				}
 				if entry.Conflict || (knob.Current != "" && knob.Current != entry.Applied && knob.Current != entry.Before) {

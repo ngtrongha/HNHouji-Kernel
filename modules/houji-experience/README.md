@@ -1,4 +1,4 @@
-# HNHouji Experience 0.4.1-preview
+# HNHouji Experience 0.5.0-preview
 
 Module KernelSU độc lập cho Xiaomi 14 **houji**, arm64, GKI 6.1 và user 0.
 WebUI mở trong Manager; CLI là phương án dự phòng. Không cần metamodule,
@@ -193,16 +193,23 @@ Proxy riêng có thể chọn không xác thực, nhưng nên có token nếu pu
 
 Tham khảo: [OpenRouter: tham số và giá trị mặc định khi không gửi](https://openrouter.ai/docs/api_reference/parameters).
 
-## Áp dụng đề xuất AI (0.4.0)
+## Áp dụng đề xuất AI (0.5.0)
 
-- AI trả Markdown trong `answer` và danh sách `actions` JSON. Không bật chế độ
-  JSON riêng của provider, nên endpoint vẫn dùng giao thức cũ. Nếu model không
-  trả đúng cấu trúc, bạn vẫn đọc được tư vấn nhưng không có thay đổi được áp dụng.
-  Phản hồi bị cắt/lỗi không được dùng để tạo kế hoạch. Không gọi lại API để sửa JSON.
+- AI trả Markdown trong `answer` và danh sách `actions` qua **JSON Schema strict**:
+  Chat Completions dùng `response_format.json_schema`, Responses dùng `text.format`.
+  OpenRouter dùng `provider.require_parameters=true` để tránh route bỏ qua schema.
+  Cần model/provider hỗ trợ Structured Outputs. Schema giới hạn app-ID đúng snapshot,
+  native-game đúng hỗ trợ và các mục kernel có khả năng bật. Cấu trúc không thay thế
+  kiểm tra live; API vẫn có thể từ chối, timeout hoặc trả dở dang. Khi đó không tạo
+  thay đổi, không hạ xuống free text và không gọi lại API để sửa JSON.
 - Bảng **Các thay đổi được đề xuất** hiển thị ứng dụng/preset, giá trị trước/sau
   và lý do; bấm **Áp dụng đề xuất** để module kiểm tra lại rồi lưu cấu hình.
-  Chỉ hai hành động được hỗ trợ: profile ứng dụng (`automatic`, `daily`,
-  `native-game`, `windows-game`, `linux`) và bật/tắt preset kernel Hằng ngày.
+  Ba hành động: profile ứng dụng (`automatic`, `daily`, `native-game`,
+  `windows-game`, `linux`), bật/tắt preset và `kernel_control` bật/tắt riêng
+  `swap_readahead`, `tcp_congestion`, `data_fsync`. Giá trị bật vẫn cố định là
+  page-cluster 0, BBR, min_fsync_blocks 20; tắt khôi phục giá trị gốc được lưu,
+  không giả định giá trị stock. AI nhận giá trị hiện tại/target/hỗ trợ để chọn
+  từng mục. Không có benchmark chứng minh cả ba luôn phù hợp cho mọi workload.
   Không nhận shell, đường dẫn, giá trị sysctl, quyền, bảo vệ thông báo hoặc API key
   từ AI. `automatic` bỏ quy tắc riêng; Windows/Linux vẫn chỉ theo dõi tích hợp.
 - **Thói quen → Tự áp dụng đề xuất hợp lệ sau mỗi lượt AI chạy theo lịch** mặc
@@ -212,8 +219,8 @@ Tham khảo: [OpenRouter: tham số và giá trị mặc định khi không gử
   ngưỡng chính sách thử nghiệm, không chứng minh cấu hình tối ưu.
 - Tự động giữ quy tắc ứng dụng bạn tự đặt. Quy tắc do AI áp dụng được đánh dấu
   riêng để lượt sau có thể điều chỉnh; đặt lại bằng UI/CLI sẽ bỏ dấu sở hữu AI.
-  Preset kernel nằm trong phạm vi tùy chọn tự áp dụng; tắt tùy chọn không tự
-  hoàn tác lượt đã lưu. Tăng chế độ game/bật preset tự động còn cần mẫu PSI và
+  Preset và từng control nằm trong phạm vi tùy chọn tự áp dụng; tắt tùy chọn không tự
+  hoàn tác lượt đã lưu. Tăng chế độ game/bật preset hoặc control tự động cần mẫu PSI và
   Android thermal hiện tại đọc được, PSI FULL <2% và thermal status <3; giữ
   nguyên cơ chế bảo vệ của hãng. Chỉ chọn performance nếu GameManager thực sự hỗ trợ.
 - Kế hoạch có ID ngẫu nhiên, hết hạn sau 24 giờ/reboot, khóa với cấu hình lúc
@@ -372,7 +379,7 @@ binary thuần Go CGO=0 dù cross-compile thành công. Không build bằng `net
 Go runtime được link vào binary; license BSD kèm ZIP. Không có dependency Go
 bên thứ ba hoặc HTTP server chạy nền.
 
-Đầu ra `dist/HNHouji-Experience-0.4.1-preview.zip`, checksum và manifest; không
+Đầu ra `dist/HNHouji-Experience-0.5.0-preview.zip`, checksum và manifest; không
 đưa source test, node_modules, model, key hay state vào ZIP. Build metadata nằm
 trong manifest. Build riêng tạo ZIP generic; khi được workflow kernel gọi,
 tạo ZIP có hậu tố bản kernel/hash và metadata nhúng. Workflow module không tự

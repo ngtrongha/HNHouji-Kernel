@@ -64,12 +64,12 @@ func (a *App) dailySnapshot(at time.Time) (map[string]any, []HabitApp, error) {
 		observed += day.Observed
 		days[date] = map[string]any{"timezone": day.Timezone, "observed_seconds": day.Observed, "active_seconds": day.Active, "samples": day.Samples, "charging_samples": day.ChargingSamples, "hours": day.Hours, "metrics": day.Metrics}
 	}
-	return map[string]any{"device": "Xiaomi 14 houji 8GB", "through": h.Through, "timezone": c.Timezone, "retention_days": 7, "samples": samples, "observed_seconds": observed, "coverage_note": "Observed intervals only; gaps and missing sensors are unknown. Max 16 apps, 32 tracked per day; app IDs are temporary labels. Not a battery/FPS benchmark.", "days": days, "apps": apps, "settings": map[string]any{"adaptive": c.Adaptive, "kernel_preset": core.KernelTuning, "automatic_application": c.AutoApply}, "module_controls": "app_profile: automatic/daily/native-game/windows-game/linux; native-game only when supported. kernel_preset: existing preset on/off only when kernel matches. No custom knob values or commands. Apply only through module validation."}, legend, nil
+	return map[string]any{"device": "Xiaomi 14 houji 8GB", "through": h.Through, "timezone": c.Timezone, "retention_days": 7, "samples": samples, "observed_seconds": observed, "coverage_note": "Observed intervals only; gaps and missing sensors are unknown. Max 16 apps, 32 tracked per day; app IDs are temporary labels. Not a battery/FPS benchmark.", "days": days, "apps": apps, "settings": map[string]any{"adaptive": c.Adaptive, "kernel_preset": core.KernelTuning, "automatic_application": c.AutoApply}, "module_controls": "app_profile: automatic/daily/native-game/windows-game/linux; native-game only when supported. kernel_preset: master on/off; kernel_control: swap_readahead/tcp_congestion/data_fsync on/off with fixed existing targets only when supported and kernel matches. No custom knob values or commands. Apply only through module validation."}, legend, nil
 }
 
 const dailyInstruction = usefulAdvisorInstruction + `
 Đây là thống kê tối đa 7 ngày theo giờ và ứng dụng mã hóa tên. Sum/count là trung bình các mẫu, không phải tích phân theo thời gian. Chỉ đánh giá phần thời gian được quan sát; không suy đoán thói quen từ khoảng thiếu dữ liệu. CPU busy là phần trăm từ chênh lệch /proc/stat.
-Nêu các khung giờ nổi bật, thay đổi giữa các ngày có đủ độ phủ và những đề xuất đáng thử theo thứ tự ưu tiên. Chỉ tạo actions cho app_profile hoặc kernel_preset đã có. Native-game chỉ khi performance_supported=true. Không tạo tham số kernel mới hoặc tuyên bố đã áp dụng. Liên hệ app-ID để người dùng đối chiếu bảng trên máy. Khi chưa đủ 2 ngày có mẫu, giải thích mẫu hiện có và đề xuất thu thập thêm, không khẳng định đã học được thói quen.`
+Nêu các khung giờ nổi bật, thay đổi giữa các ngày có đủ độ phủ và những đề xuất đáng thử theo thứ tự ưu tiên. Chỉ tạo actions cho app_profile, kernel_preset hoặc kernel_control đã có trong snapshot và schema. Native-game chỉ khi performance_supported=true. Không tạo tham số kernel mới hoặc tuyên bố đã áp dụng. Liên hệ app-ID để người dùng đối chiếu bảng trên máy. Khi chưa đủ 2 ngày có mẫu, giải thích mẫu hiện có và đề xuất thu thập thêm, không khẳng định đã học được thói quen.`
 
 func (a *App) dailyAnalyze(ctx context.Context, at time.Time, automatic bool, tr http.RoundTripper) (DailyResult, error) {
 	unlock, err := a.lock("daily")
@@ -130,11 +130,13 @@ func (a *App) dailyAnalyze(ctx context.Context, at time.Time, automatic bool, tr
 	payload["automatic_run"] = automatic
 	sync := a.KernelSync(ctx)
 	payload["kernel_compatibility"] = map[string]any{"ready": sync.Ready, "state": sync.State}
+	knobs := a.configuredKernelPlan(baseCore)
+	payload["kernel_controls"] = knobs
 	// Reserve before the network, including failures. No unattended retries.
 	if err = atomicJSON(a.state("daily-attempt.json"), DailyAttempt{Day: date, At: at.UTC().Format(time.RFC3339), Automatic: automatic}); err != nil {
 		return DailyResult{}, err
 	}
-	result := DailyResult{At: at.UTC().Format(time.RFC3339), Automatic: automatic, Legend: legend, Result: a.requestAI(ctx, "", false, dailyInstruction, pretty(payload), tr)}
+	result := DailyResult{At: at.UTC().Format(time.RFC3339), Automatic: automatic, Legend: legend, Result: a.requestAI(ctx, "", false, dailyInstruction, pretty(payload), proposalSchema(legend, baseCore, knobs, sync.Ready, automatic), tr)}
 	if ctx.Err() != nil {
 		return DailyResult{}, ctx.Err()
 	}

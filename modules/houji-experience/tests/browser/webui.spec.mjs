@@ -24,12 +24,14 @@ async function mockBridge(page) {
           if(window.bodyError&&req.mode==='ask')result={source:'local-rules',ai_error:window.bodyError,report};
           if(req.mode==='daily')result={at:'2026-10-25T13:00:00Z',legend:[{id:'app-01',package:'com.example.game'}],result:{source:'api',answer:'app-01: <img src=x onerror="window.pwned=true"> xem xét daily',usage:{total_tokens:100},finish_reason:'stop',model:'actual-model',elapsed_ms:20}};
           if(window.proposalTest&&req.mode==='ask')result={source:'api',answer:'## Đề xuất\nSo sánh profile Hằng ngày.',proposal:{id:'plan-01',changes:[{kind:'app_profile',app_id:'app-01',package:'com.example.game',before:'automatic',after:'daily',reason:'Lựa chọn để đối chiếu trước/sau.'}]}};
+          if(window.controlProposal&&req.mode==='ask')result={source:'api',answer:'Đo riêng tác động mạng.',proposal:{id:'control-01',changes:[{kind:'kernel_control',control:'tcp_congestion',before:'on',after:'off',reason:'Đối chiếu kết nối mới trước/sau.'}]}};
+          if(window.schemaRejected&&req.mode==='ask')result={source:'local-rules',ai_error:'http-400',structured_output_hint:true,report};
           job={id:'job-'+window.requests.length,mode:req.mode,state:'queued',started:new Date().toISOString(),result};data={...job,result:undefined};break;
         }
         case 'ai_job_status': if(job.state==='queued'||job.state==='running')job.state=window.holdAI?'running':'completed';data=job;break;
         case 'ai_job_cancel': job.state='cancelled';data=job;break;
         case 'ai_application_status': data=application;break;
-        case 'ai_proposal_apply': config.apps['com.example.game']='daily';application={proposal_id:req.proposal_id,status:'applied',automatic:false,at:'2026-10-25T13:00:00Z',changes:[{kind:'app_profile'}]};data=application;break;
+        case 'ai_proposal_apply': if(!window.controlProposal)config.apps['com.example.game']='daily';application={proposal_id:req.proposal_id,status:'applied',automatic:false,at:'2026-10-25T13:00:00Z',changes:window.controlProposal?[{kind:'kernel_control',control:'tcp_congestion'}]:[{kind:'app_profile'}]};data=application;break;
         case 'ai_application_undo': delete config.apps['com.example.game'];application={...application,status:'undone'};data=application;break;
         case 'learning_status': data={config:learning,history:{days:{'2026-10-25':{observed_seconds:600,active_seconds:300,samples:10,hours:Array.from({length:24},(_,h)=>({active_seconds:h===20?300:0}))}},through:'2026-10-25T13:00:00Z'},apps:[{id:'app-01',package:'com.example.game',seconds:300,days:1,sessions:2}],daily:{}};break;
         case 'learning_preview': data={apps:[{id:'app-01',seconds:300}],observed_seconds:600};break;
@@ -118,6 +120,24 @@ test('AI proposals require explicit apply and daily automatic application is opt
   await expect(page.locator('#ai-last-application')).toContainText('Đã lưu cài đặt');await expect(page.locator('#ai-undo')).toBeEnabled();
   const sent=await page.evaluate(()=>window.requests.find(x=>x.req.action==='ai_proposal_apply').req);expect(sent).toEqual({action:'ai_proposal_apply',proposal_id:'plan-01'});
   await page.locator('#ai-undo').click();await expect(page.locator('#ai-last-application')).toContainText('Đã hoàn tác');
+});
+
+test('granular kernel proposal names the component and applies only its stored ID',async({page})=>{
+  await mockBridge(page);await page.goto(url);await page.evaluate(()=>{window.controlProposal=true;});
+  await page.getByRole('tab',{name:'Trợ lý AI',exact:true}).click();await page.locator('#ai-ask').click();
+  await expect(page.locator('#ai-answer .proposal-change')).toContainText('TCP congestion');
+  await expect(page.locator('#ai-answer .proposal-change')).toContainText('Bật → Tắt');
+  await page.locator('#ai-answer .proposal-apply').click();
+  await expect(page.locator('#ai-last-application')).toContainText('Đã lưu cài đặt');
+  expect(await page.evaluate(()=>window.requests.find(x=>x.req.action==='ai_proposal_apply').req)).toEqual({action:'ai_proposal_apply',proposal_id:'control-01'});
+});
+
+test('unsupported structured output is explained without free text fallback or retries',async({page})=>{
+  await mockBridge(page);await page.goto(url);await page.evaluate(()=>{window.schemaRejected=true;});
+  await page.getByRole('tab',{name:'Trợ lý AI',exact:true}).click();await page.locator('#ai-ask').click();
+  await expect(page.locator('#ai-answer')).toContainText('hỗ trợ Structured Outputs');
+  await expect(page.locator('#ai-answer .proposal-apply')).toHaveCount(0);
+  expect(await page.evaluate(()=>window.requests.filter(x=>x.req.action==='ai_job_start').length)).toBe(1);
 });
 
 test('background AI shows loading, stays navigable, cancels and accepts provider token budgets',async({page})=>{

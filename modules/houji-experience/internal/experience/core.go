@@ -507,7 +507,7 @@ func (a *App) snapshotConfig() map[string]any {
 	if e != nil {
 		return map[string]any{"error": "configuration-invalid"}
 	}
-	return map[string]any{"enabled": c.Enabled, "kernel_tuning": c.KernelTuning, "default_profile": "daily", "apps": c.Apps, "protected": c.Protected, "reboot_required": c.MigrationBoot != "" && c.MigrationBoot == a.bootID()}
+	return map[string]any{"enabled": c.Enabled, "kernel_tuning": c.KernelTuning, "kernel_controls": c.KernelControls, "default_profile": "daily", "apps": c.Apps, "protected": c.Protected, "reboot_required": c.MigrationBoot != "" && c.MigrationBoot == a.bootID()}
 }
 
 func (a *App) CleanupBoot(ctx context.Context) error {

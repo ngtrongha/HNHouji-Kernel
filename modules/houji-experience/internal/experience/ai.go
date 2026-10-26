@@ -130,7 +130,7 @@ Trả lời cuối cùng bằng tiếng Việt, dùng Markdown dễ đọc. Tr�
 Chỉ dùng dữ liệu được cung cấp. MemAvailable_kib/1048576 là GiB RAM khả dụng. cpu_load_average_1m là số tác vụ chạy/chờ trung bình, có thể gồm chờ I/O; không phải phần trăm CPU và không đủ để kết luận nghẽn CPU.
 psi_some_avg10 và psi_full_avg10 là phần trăm thời gian chờ do áp lực bộ nhớ trong cửa sổ trung bình 10 giây; FULL chỉ thời gian tất cả tác vụ không nhàn rỗi cùng chờ. PSI không đo điện năng hoặc pin chờ; giá trị 0 trong một mẫu không chứng minh hệ thống luôn hết áp lực.
 battery_celsius đo nhiệt độ pin, không phải SoC. Một mức phần trăm pin không đủ đo tiêu hao. Không suy diễn benchmark, FPS, tiết kiệm pin hoặc nguyên nhân từ một mẫu. Ngưỡng trong báo cáo chỉ mang tính chẩn đoán.
-Không đề nghị sửa WALT, HZ, thermal, MM/ZRAM, DRM, F2FS hoặc kernel pins. Không đưa lệnh shell/yêu cầu thực thi. Nêu rõ điều chưa xác định và đề xuất đo lặp cùng workload.`
+Không đề nghị sửa WALT, HZ, thermal, cấu hình MM/ZRAM, DRM, F2FS hoặc kernel pins. Ngoại lệ duy nhất: bật/tắt từng kernel_control đã có trong snapshot theo target cố định của module, không tự chọn tham số/giá trị mới. Không đưa lệnh shell/yêu cầu thực thi. Nêu rõ điều chưa xác định và đề xuất đo lặp cùng workload.`
 
 func (a *App) Ask(ctx context.Context, prompt string, test bool) map[string]any {
 	return a.askWithTransport(ctx, prompt, test, nil)
@@ -140,10 +140,10 @@ func (a *App) askWithTransport(ctx context.Context, prompt string, test bool, tr
 	if !test {
 		return a.advisorWithTransport(ctx, prompt, "daily", nil, transport)
 	}
-	return a.requestAI(ctx, prompt, test, "", "", transport)
+	return a.requestAI(ctx, prompt, test, "", "", nil, transport)
 }
 
-func (a *App) requestAI(ctx context.Context, prompt string, test bool, instruction, payload string, transport http.RoundTripper) map[string]any {
+func (a *App) requestAI(ctx context.Context, prompt string, test bool, instruction, payload string, schema map[string]any, transport http.RoundTripper) map[string]any {
 	fallback := func(code string) map[string]any {
 		return map[string]any{"source": "local-rules", "ai_error": code, "report": a.Report(ctx)}
 	}
@@ -198,6 +198,19 @@ func (a *App) requestAI(ctx context.Context, prompt string, test bool, instructi
 			body.(map[string]any)["reasoning"] = map[string]bool{"exclude": true}
 		}
 	}
+	if schema != nil {
+		format := map[string]any{"name": "houji_proposal", "strict": true, "schema": schema}
+		if c.Style == "responses" {
+			format["type"] = "json_schema"
+			body.(map[string]any)["text"] = map[string]any{"format": format}
+		} else {
+			body.(map[string]any)["response_format"] = map[string]any{"type": "json_schema", "json_schema": format}
+		}
+		endpoint, _ := url.Parse(c.BaseURL)
+		if endpoint.Hostname() == "openrouter.ai" {
+			body.(map[string]any)["provider"] = map[string]bool{"require_parameters": true}
+		}
+	}
 	data, _ := json.Marshal(body)
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(c.Timeout)*time.Second)
 	defer cancel()
@@ -224,7 +237,11 @@ func (a *App) requestAI(ctx context.Context, prompt string, test bool, instructi
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		code := fmt.Sprintf("http-%d", res.StatusCode)
 		a.logEvent("ai-" + code)
-		return fallback(code)
+		result := fallback(code)
+		if schema != nil && (res.StatusCode == 400 || res.StatusCode == 404 || res.StatusCode == 422) {
+			result["structured_output_hint"] = true
+		}
+		return result
 	}
 	b, e := io.ReadAll(io.LimitReader(res.Body, maxAIResponseBytes+1))
 	if len(b) > maxAIResponseBytes {

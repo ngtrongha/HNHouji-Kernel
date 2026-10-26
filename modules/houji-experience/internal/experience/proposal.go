@@ -14,6 +14,7 @@ import (
 
 type AIAction struct {
 	Kind    string `json:"kind"`
+	Control string `json:"control,omitempty"`
 	AppID   string `json:"app_id,omitempty"`
 	Profile string `json:"profile,omitempty"`
 	Enabled *bool  `json:"enabled,omitempty"`
@@ -21,6 +22,7 @@ type AIAction struct {
 }
 type AIChange struct {
 	Kind        string `json:"kind"`
+	Control     string `json:"control,omitempty"`
 	AppID       string `json:"app_id,omitempty"`
 	Package     string `json:"package,omitempty"`
 	Before      string `json:"before"`
@@ -68,7 +70,7 @@ func enabledText(on bool) string {
 const proposalInstruction = `
 Trả DUY NHẤT một JSON object, không bọc code fence, theo mẫu:
 {"answer":"Phân tích tiếng Việt bằng Markdown, đủ bằng chứng/đánh đổi/cách kiểm chứng","actions":[{"kind":"app_profile","app_id":"app-01","profile":"daily","reason":"Lý do có bằng chứng"},{"kind":"kernel_preset","enabled":false,"reason":"Lý do"}]}
-actions có thể rỗng khi chưa có thay đổi đủ căn cứ. Chỉ hai kind trên; profile thuộc automatic (bỏ quy tắc riêng), daily, native-game, windows-game, linux. App-ID phải có trong snapshot; native-game cần performance_supported=true. Với automatic_run=true, không đổi app có rule_source=manual. Kernel preset chỉ bật/tắt preset hiện có, chỉ đề xuất khi kernel_compatibility.ready=true. Không tạo lệnh, đường dẫn, giá trị sysctl, bảo vệ thông báo, khóa API hoặc tùy chọn tự cấp quyền. Không nói đã áp dụng: module sẽ kiểm tra, người dùng bấm áp dụng hoặc đã bật tự áp dụng theo lịch. Chỉ đề xuất thay đổi có lợi ích dự kiến và phép kiểm chứng rõ ràng; không suy đoán số tiết kiệm/FPS.`
+actions có thể rỗng khi chưa có thay đổi đủ căn cứ. Thêm kind kernel_control: {"kind":"kernel_control","control":"tcp_congestion","enabled":false,"reason":"Lý do ngắn có bằng chứng"}. control chỉ thuộc swap_readahead, tcp_congestion, data_fsync và chỉ bật nếu kernel_controls có state=available, kernel_compatibility.ready=true. Mỗi control bật dùng đúng target cố định đã cung cấp; tắt khôi phục giá trị gốc do module sở hữu. Không được chọn giá trị mới. Bật control cần kernel_preset bật (có thể đề xuất cùng lượt). Mỗi ứng dụng/control/preset chỉ xuất hiện một lần. reason tối đa 300 ký tự. profile thuộc automatic (bỏ quy tắc riêng), daily, native-game, windows-game, linux. App-ID phải có trong snapshot; native-game cần performance_supported=true. Với automatic_run=true, không đổi app có rule_source=manual. Không tạo lệnh, đường dẫn, giá trị sysctl, bảo vệ thông báo, khóa API hoặc tùy chọn tự cấp quyền. Không nói đã áp dụng: module sẽ kiểm tra, người dùng bấm áp dụng hoặc đã bật tự áp dụng theo lịch. Chỉ đề xuất thay đổi có bằng chứng và phép kiểm chứng rõ ràng; không suy đoán số tiết kiệm/FPS. Nếu không có thay đổi phù hợp, trả actions=[] và giải thích; không bịa thay đổi để có nút áp dụng.`
 
 func decodeProposal(answer string) (string, []AIAction, error) {
 	text := strings.TrimSpace(answer)
@@ -85,7 +87,7 @@ func decodeProposal(answer string) (string, []AIAction, error) {
 		return "", nil, errors.New("proposal-format-invalid")
 	}
 	var extra any
-	if d.Decode(&extra) != io.EOF || envelope.Answer == "" || envelope.Actions == nil || len(envelope.Actions) > 18 {
+	if d.Decode(&extra) != io.EOF || strings.TrimSpace(envelope.Answer) == "" || envelope.Actions == nil || len(envelope.Actions) > 18 {
 		return "", nil, errors.New("proposal-format-invalid")
 	}
 	return envelope.Answer, envelope.Actions, nil
@@ -104,7 +106,7 @@ func makeProposal(actions []AIAction, legend []HabitApp, base Config, learningGe
 		switch action.Kind {
 		case "app_profile":
 			app, ok := apps[action.AppID]
-			if !ok || !validPackage(app.Package) || action.Enabled != nil || (!profiles[action.Profile] && action.Profile != "automatic") {
+			if !ok || !validPackage(app.Package) || action.Enabled != nil || action.Control != "" || (!profiles[action.Profile] && action.Profile != "automatic") {
 				return p, errors.New("proposal-app-invalid")
 			}
 			if action.Profile == "native-game" && !app.GameSupported {
@@ -124,12 +126,21 @@ func makeProposal(actions []AIAction, legend []HabitApp, base Config, learningGe
 			}
 			p.Changes = append(p.Changes, AIChange{Kind: action.Kind, AppID: action.AppID, Package: app.Package, Before: before, After: action.Profile, Reason: action.Reason, BeforeOwner: base.AIProfiles[app.Package], AfterOwner: owner})
 		case "kernel_preset":
-			if action.AppID != "" || action.Profile != "" || action.Enabled == nil || seen["kernel"] {
+			if action.AppID != "" || action.Profile != "" || action.Control != "" || action.Enabled == nil || seen["kernel"] {
 				return p, errors.New("proposal-kernel-invalid")
 			}
 			seen["kernel"] = true
 			if base.KernelTuning != *action.Enabled {
 				p.Changes = append(p.Changes, AIChange{Kind: action.Kind, Before: enabledText(base.KernelTuning), After: enabledText(*action.Enabled), Reason: action.Reason})
+			}
+		case "kernel_control":
+			if !validKernelControl(action.Control) || action.AppID != "" || action.Profile != "" || action.Enabled == nil || seen["control:"+action.Control] {
+				return p, errors.New("proposal-kernel-invalid")
+			}
+			seen["control:"+action.Control] = true
+			before := kernelControlEnabled(base, action.Control)
+			if before != *action.Enabled {
+				p.Changes = append(p.Changes, AIChange{Kind: action.Kind, Control: action.Control, Before: enabledText(before), After: enabledText(*action.Enabled), Reason: action.Reason})
 			}
 		default:
 			return p, errors.New("proposal-action-not-allowed")
@@ -354,6 +365,9 @@ func (a *App) applyProposal(ctx context.Context, id string, automatic bool) (AIA
 		return AIApplication{}, err
 	}
 	for _, change := range p.Changes {
+		if change.Kind != "kernel_control" && change.Control != "" {
+			return AIApplication{}, errors.New("proposal-kernel-invalid")
+		}
 		switch change.Kind {
 		case "app_profile":
 			if !validPackage(change.Package) || (!profiles[change.After] && change.After != "automatic") || appProfile(c, change.Package) != change.Before || change.BeforeOwner != c.AIProfiles[change.Package] || (change.After != "automatic" && change.AfterOwner != change.After) || (change.After == "automatic" && change.AfterOwner != "") {
@@ -381,6 +395,19 @@ func (a *App) applyProposal(ctx context.Context, id string, automatic bool) (AIA
 					return AIApplication{}, errors.New("proposal-kernel-unsupported")
 				}
 			}
+		case "kernel_control":
+			if !validKernelControl(change.Control) || (change.After != "on" && change.After != "off") || change.Before != enabledText(kernelControlEnabled(c, change.Control)) {
+				return AIApplication{}, errors.New("proposal-kernel-invalid")
+			}
+			if change.After == "on" {
+				supported := false
+				for _, knob := range a.configuredKernelPlan(c) {
+					supported = supported || (knob.Control == change.Control && knob.State == "available")
+				}
+				if !supported {
+					return AIApplication{}, errors.New("proposal-kernel-unsupported")
+				}
+			}
 		default:
 			return AIApplication{}, errors.New("proposal-action-not-allowed")
 		}
@@ -388,7 +415,7 @@ func (a *App) applyProposal(ctx context.Context, id string, automatic bool) (AIA
 	if automatic {
 		increase := false
 		for _, change := range p.Changes {
-			increase = increase || change.After == "native-game" || (change.Kind == "kernel_preset" && change.After == "on")
+			increase = increase || change.After == "native-game" || ((change.Kind == "kernel_preset" || change.Kind == "kernel_control") && change.After == "on")
 		}
 		if increase {
 			sampleCtx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
@@ -409,6 +436,11 @@ func (a *App) applyProposal(ctx context.Context, id string, automatic bool) (AIA
 	}
 	before := configHash(c)
 	setAIChanges(&c, p.Changes, false)
+	for _, change := range p.Changes {
+		if change.Kind == "kernel_control" && change.After == "on" && !c.KernelTuning {
+			return AIApplication{}, errors.New("proposal-kernel-preset-off")
+		}
+	}
 	if len(c.Apps) > 100 {
 		return AIApplication{}, errors.New("maximum 100 app rules")
 	}
@@ -489,12 +521,22 @@ func setAIChanges(c *Config, changes []AIChange, undo bool) {
 			}
 		case "kernel_preset":
 			c.KernelTuning = value == "on"
+		case "kernel_control":
+			if c.KernelControls == nil {
+				c.KernelControls = map[string]bool{}
+			}
+			if value == "on" {
+				delete(c.KernelControls, change.Control)
+			} else {
+				c.KernelControls[change.Control] = false
+			}
 		}
 	}
 }
 func (a *App) restoreAIChanges(ctx context.Context, changes []AIChange, undo bool) error {
 	apps := map[string]bool{}
 	kernelOff := false
+	controlsOff := map[string]bool{}
 	for _, change := range changes {
 		if change.Kind == "app_profile" {
 			apps[change.Package] = true
@@ -506,12 +548,17 @@ func (a *App) restoreAIChanges(ctx context.Context, changes []AIChange, undo boo
 		if change.Kind == "kernel_preset" && value == "off" {
 			kernelOff = true
 		}
+		if change.Kind == "kernel_control" && value == "off" {
+			controlsOff[change.Control] = true
+		}
 	}
 	j, err := a.journal()
 	if err != nil {
 		return err
 	}
-	return a.restoreEntries(ctx, &j, func(e Entry) bool { return (e.Kind == "game" && apps[e.Package]) || (e.Kind == "kernel" && kernelOff) })
+	return a.restoreEntries(ctx, &j, func(e Entry) bool {
+		return (e.Kind == "game" && apps[e.Package]) || (e.Kind == "kernel" && (kernelOff || controlsOff[kernelControlForKnob(e.Package)]))
+	})
 }
 func (a *App) undoAI(ctx context.Context) (AIApplication, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -538,7 +585,7 @@ func (a *App) undoAI(ctx context.Context) (AIApplication, error) {
 		return r, err
 	}
 	for _, change := range r.Changes {
-		if change.Kind != "app_profile" && change.Kind != "kernel_preset" {
+		if change.Kind != "app_profile" && change.Kind != "kernel_preset" && change.Kind != "kernel_control" {
 			return r, errors.New("proposal-action-not-allowed")
 		}
 		if change.Kind == "app_profile" && (!validPackage(change.Package) || (!profiles[change.Before] && change.Before != "automatic")) {
@@ -552,6 +599,14 @@ func (a *App) undoAI(ctx context.Context) (AIApplication, error) {
 		}
 		if change.Kind == "kernel_preset" && enabledText(c.KernelTuning) != change.After {
 			return r, errors.New("proposal-undo-conflict")
+		}
+		if change.Kind == "kernel_control" {
+			if !validKernelControl(change.Control) || (change.Before != "on" && change.Before != "off") {
+				return r, errors.New("proposal-kernel-invalid")
+			}
+			if enabledText(kernelControlEnabled(c, change.Control)) != change.After {
+				return r, errors.New("proposal-undo-conflict")
+			}
 		}
 	}
 	if err = a.restoreAIChanges(ctx, r.Changes, true); err != nil {

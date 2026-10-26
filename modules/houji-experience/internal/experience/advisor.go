@@ -26,6 +26,10 @@ func (a *App) advisorContext(ctx context.Context, at time.Time) map[string]any {
 }
 func (a *App) advisorEvidence(ctx context.Context, at time.Time) (map[string]any, []HabitApp) {
 	result := map[string]any{"current_sample": a.Report(ctx)}
+	core, _ := a.config()
+	sync := a.KernelSync(ctx)
+	result["kernel_compatibility"] = map[string]any{"ready": sync.Ready, "state": sync.State}
+	result["kernel_controls"] = a.configuredKernelPlan(core)
 	usage, legend, err := a.dailySnapshot(at)
 	if err != nil {
 		result["history_available"] = false
@@ -33,13 +37,11 @@ func (a *App) advisorEvidence(ctx context.Context, at time.Time) (map[string]any
 		return result, nil
 	}
 	result["usage"] = usage
-	sync := a.KernelSync(ctx)
-	result["kernel_compatibility"] = map[string]any{"ready": sync.Ready, "state": sync.State}
 	rows := comparisonRows(usage["days"].(map[string]any))
 	result["daily_comparison"] = rows
 	result["days_with_samples"] = len(rows)
 	result["comparison_limits"] = "Days may have different workloads and coverage. Means are sample means, not time-weighted. No causal performance or battery claim. CPU busy is whole-device; not per-app CPU."
-	result["module_controls"] = []string{"app_profile: automatic/daily/native-game/windows-game/linux; native-game only where performance_supported=true", "kernel_preset: existing daily kernel preset on/off only when kernel_compatibility.ready=true; no custom knob values"}
+	result["module_controls"] = []string{"app_profile: automatic/daily/native-game/windows-game/linux; native-game only where performance_supported=true", "kernel_preset: master on/off; kernel_control: each existing kernel_controls entry on/off, enabling uses fixed target, disabling restores owned original. No custom knob values."}
 	return result, legend
 }
 func comparisonRows(days map[string]any) []map[string]any {
@@ -86,7 +88,7 @@ func (a *App) advisorWithTransport(ctx context.Context, prompt, goal string, mes
 	learning, learningErr := a.learningConfig()
 	evidence, legend := a.advisorEvidence(ctx, time.Now())
 	payload := map[string]any{"goal": advisorGoals[goal], "question": prompt, "conversation": messages, "evidence": evidence, "automatic_run": false}
-	result := a.requestAI(ctx, "", false, usefulAdvisorInstruction, pretty(payload), tr)
+	result := a.requestAI(ctx, "", false, usefulAdvisorInstruction, pretty(payload), proposalSchema(legend, base, a.configuredKernelPlan(base), a.KernelSync(ctx).Ready, false), tr)
 	result["app_legend"] = legend
 	if baseErr == nil && learningErr == nil {
 		result = a.attachProposal(result, legend, base, learning.Generation, time.Now())

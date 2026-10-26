@@ -14,7 +14,7 @@
     <header class="masthead">
       <div class="brand-mark" aria-hidden="true">h<span>。</span></div>
       <div><p class="eyebrow">HNHOUJI / XIAOMI 14</p><h1>Experience</h1></div>
-      <span class="version">PREVIEW<br>0.4.1</span>
+      <span class="version">PREVIEW<br>0.5.0</span>
     </header>
     <div id="bridge-warning" class="notice" hidden>Mở WebUI từ KernelSU Manager để kết nối thiết bị. Nếu Manager không hỗ trợ bridge, dùng CLI houjictl. Trang này không dùng dữ liệu mô phỏng.</div>
     <div id="notification" class="notice" role="status" aria-live="polite" hidden></div>
@@ -55,7 +55,7 @@
           <p>Quy tắc bạn đặt cho ứng dụng được ưu tiên. Game Android chỉ được chọn sau ít nhất 2 ngày quan sát, 30 phút dùng, 3 phiên và 10 phút trong khung giờ hiện tại; kiểm tra hỗ trợ performance và dữ liệu tài nguyên mới. Khi có áp lực đã đo được, trở về Hằng ngày. Đây là quy tắc thử nghiệm cần đối chiếu trên máy.</p>
           <label class="check"><input id="learning-daily" type="checkbox"> Cho phép gửi thống kê tổng hợp tới AI mỗi ngày</label>
           <label class="check"><input id="learning-auto-apply" type="checkbox"> Tự áp dụng đề xuất hợp lệ sau mỗi lượt AI chạy theo lịch</label>
-          <p class="footnote">Mặc định tắt. Chỉ đổi profile ứng dụng và bật/tắt preset kernel có sẵn. Cần ít nhất 2 ngày có mẫu, 30 mẫu và 30 phút quan sát. Không ghi đè quy tắc ứng dụng bạn tự đặt. Tắt tùy chọn dừng các lần áp dụng sau; dùng Hoàn tác để trả lại lượt gần nhất.</p>
+          <p class="footnote">Mặc định tắt. Đổi profile ứng dụng, bật/tắt preset hoặc từng tinh chỉnh kernel có sẵn. Cần ít nhất 2 ngày có mẫu, 30 mẫu và 30 phút quan sát. Không ghi đè quy tắc ứng dụng bạn tự đặt. Tắt tùy chọn dừng các lần áp dụng sau; dùng Hoàn tác để trả lại lượt gần nhất.</p>
           <div class="form-grid"><div><label for="learning-hour">Giờ bắt đầu phân tích (0–23)</label><input id="learning-hour" type="number" min="0" max="23" value="21" required></div><div><label for="learning-zone">Múi giờ</label><input id="learning-zone" type="text" value="Asia/Ho_Chi_Minh" maxlength="100" required></div></div>
           <label class="check"><input id="learning-charging" type="checkbox"> Chỉ phân tích tự động khi đang sạc hoặc đầy pin</label>
           <p class="footnote">Lịch AI mặc định tắt. Khi bật: tối đa một lần thử tự động mỗi ngày sau giờ chọn, cần AI được cấu hình và module đang bật. Có thể phát sinh phí; lỗi mạng không tự thử lại. Nếu chưa bật tự áp dụng, dùng nút Áp dụng đề xuất sau khi xem bảng thay đổi.</p>
@@ -85,7 +85,7 @@
             <label for="api-limit">Token đầu ra · 0 = nhà cung cấp tự quyết</label><input id="api-limit" type="number" min="0" step="1" value="0" required><div class="token-options"><button type="button" data-token="0">Theo model</button><button type="button" data-token="8192">8 192</button><button type="button" data-token="16384">16 384</button></div><small>Không có trần token của module. Giới hạn thực tế phụ thuộc model/API.</small>
             <label for="api-timeout">Thời gian chờ tối đa (giây)</label><input id="api-timeout" type="number" min="5" max="900" value="180" required>
             <label class="check"><input id="api-enabled" type="checkbox" checked> Cho phép gọi API thủ công và theo lịch đã bật trong Thói quen</label>
-            <div class="button-row"><button class="primary" type="submit">Lưu cấu hình</button><button id="api-test" type="button" class="outline">Kiểm tra kết nối</button></div>
+            <p class="footnote">Phân tích và áp dụng cần model/provider hỗ trợ Structured Outputs (JSON Schema strict). Kiểm tra kết nối chỉ xác nhận API truy cập được.</p><div class="button-row"><button class="primary" type="submit">Lưu cấu hình</button><button id="api-test" type="button" class="outline">Kiểm tra kết nối</button></div>
           </form>
           <div class="button-row secondary-actions"><button id="api-disable" class="text-button">Tắt AI</button><button id="api-clear" class="text-button danger-text">Xóa cấu hình &amp; khóa</button></div>
           <p class="footnote">Dùng endpoint trực tiếp hoặc proxy riêng. API có thể phát sinh phí và gửi dữ liệu tới nhà cung cấp; không tự retry. Máy root không bảo vệ khóa tuyệt đối trước tiến trình root khác.</p>

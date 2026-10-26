@@ -14,7 +14,7 @@ import (
 )
 
 const ModuleID = "houji_experience"
-const Version = "0.4.1-preview"
+const Version = "0.5.0-preview"
 
 type Config struct {
 	DefaultsVersion int               `json:"defaults_version"`
@@ -22,6 +22,7 @@ type Config struct {
 	Version         int               `json:"version"`
 	Enabled         bool              `json:"enabled"`
 	KernelTuning    bool              `json:"kernel_tuning"`
+	KernelControls  map[string]bool   `json:"kernel_controls,omitempty"`
 	Apps            map[string]string `json:"apps"`
 	AIProfiles      map[string]string `json:"ai_profiles,omitempty"`
 	Protected       map[string]bool   `json:"protected"`
@@ -126,6 +127,11 @@ func (a *App) config() (Config, error) {
 	}
 	if err == nil && c.Version != 1 {
 		err = errors.New("unsupported configuration version")
+	}
+	for id := range c.KernelControls {
+		if !validKernelControl(id) {
+			return c, errors.New("unknown kernel control")
+		}
 	}
 	return c, err
 }
