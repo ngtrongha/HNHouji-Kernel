@@ -130,15 +130,33 @@ jobs:
             python3 tools/package.py
           fi
           python3 -m unittest discover -s tests -p 'test_*.py'
-      - name: Upload preview module and checksums
+      - name: Upload installable module ZIP without an outer archive
+        id: installable
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ inputs.artifact_name || 'HNHouji-Experience-preview' }}
+          path: modules/houji-experience/dist/*.zip
+          archive: false
+          if-no-files-found: error
+      - name: Upload build files for collectors (extract before installing)
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact_name || 'HNHouji-Experience-build-files-extract-first' }}
           path: |
             modules/houji-experience/dist/*.zip
             modules/houji-experience/dist/*.sha256
             modules/houji-experience/dist/*.manifest.json
           if-no-files-found: error
+      - name: Show module installation download
+        env:
+          INSTALLABLE_URL: ${{ steps.installable.outputs.artifact-url }}
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## Cài HNHouji Experience bằng KernelSU Next
+          [Tải ZIP module để cài trực tiếp]($INSTALLABLE_URL)
+
+          Chọn file HNHouji-Experience-<version>-for-<kernel>-<hash>.zip trong KernelSU Next.
+          Artifact build-files là gói chứa ZIP/checksum/manifest: phải giải nén trước, không chọn gói đó để flash.
+          EOF
       - name: Upload browser QA
         if: always()
         uses: actions/upload-artifact@v7

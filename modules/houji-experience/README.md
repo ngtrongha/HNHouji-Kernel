@@ -14,6 +14,14 @@ Android không thay thế thử nghiệm reboot, thông báo, game và pin chờ
    bản kernel trong cùng workflow build/release. Bản build module riêng vẫn có
    thể dùng để kiểm thử, không khóa vào một Image cụ thể.
 2. Cài ZIP trong KSU/KernelSU-Next Manager. Không flash bằng recovery/AnyKernel3.
+   Trên GitHub Actions, chọn artifact tên đầy đủ `HNHouji-Experience-<version>-…zip`
+   hoặc link **Tải ZIP module để cài trực tiếp** trong Summary. File này upload
+   trực tiếp (`archive: false`), không có ZIP bọc ngoài. Với các lượt build cũ,
+   giải nén `HNHouji-Experience-preview.zip` một lần rồi chọn ZIP module bên trong.
+   Không giải nén tiếp ZIP module. Nếu ID/tên/phiên bản đều `unknown` và báo
+   `specified file not found in archive`, kiểm tra đã chọn đúng ZIP có
+   `module.prop` ngay thư mục gốc. Gói `build-files-extract-first` dùng cho kiểm tra/
+   collector, không cài trực tiếp.
 3. Nếu có helper `/data/adb/service.d/houji-notification-helper.sh`, installer
    sao lưu theo SHA-256 rồi bỏ tên thực thi đó. Không đoán giá trị gốc của
    những thiết lập cũ đã lưu trong Android.
