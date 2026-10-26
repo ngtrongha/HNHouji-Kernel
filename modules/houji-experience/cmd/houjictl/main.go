@@ -46,6 +46,11 @@ func run(ctx context.Context, args []string) error {
 		args = []string{"status"}
 	}
 	switch args[0] {
+	case "battery-worker":
+		if len(args) != 2 {
+			return errors.New("missing battery job ID")
+		}
+		return a.RunBatteryJob(ctx, args[1])
 	case "ai-worker":
 		if len(args) != 2 {
 			return errors.New("missing AI job ID")

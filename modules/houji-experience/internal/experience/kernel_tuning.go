@@ -11,15 +11,17 @@ import (
 )
 
 type KernelKnob struct {
-	ID      string `json:"id"`
-	Control string `json:"control"`
-	Enabled bool   `json:"enabled"`
-	Label   string `json:"label"`
-	Target  string `json:"target"`
-	Current string `json:"current,omitempty"`
-	Before  string `json:"before,omitempty"`
-	State   string `json:"state"`
-	Detail  string `json:"detail"`
+	ID      string   `json:"id"`
+	Control string   `json:"control"`
+	Enabled bool     `json:"enabled"`
+	Level   string   `json:"level"`
+	Levels  []string `json:"levels"`
+	Label   string   `json:"label"`
+	Target  string   `json:"target"`
+	Current string   `json:"current,omitempty"`
+	Before  string   `json:"before,omitempty"`
+	State   string   `json:"state"`
+	Detail  string   `json:"detail"`
 }
 
 var blockNameRE = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
@@ -28,6 +30,48 @@ var zramSwapRE = regexp.MustCompile(`^/dev/(?:block/)?zram[0-9]+$`)
 
 func validKernelControl(id string) bool {
 	return id == "swap_readahead" || id == "tcp_congestion" || id == "data_fsync"
+}
+func defaultKernelLevel(id string) string {
+	switch id {
+	case "swap_readahead":
+		return "0"
+	case "tcp_congestion":
+		return "bbr"
+	case "data_fsync":
+		return "20"
+	}
+	return ""
+}
+func validKernelLevel(id, level string) bool {
+	if !validKernelControl(id) {
+		return false
+	}
+	if level == "stock" {
+		return true
+	}
+	switch id {
+	case "swap_readahead":
+		return level == "0" || level == "1" || level == "2" || level == "3"
+	case "tcp_congestion":
+		return level == "cubic" || level == "bbr"
+	case "data_fsync":
+		return level == "20"
+	}
+	return false
+}
+func kernelLevel(c Config, id string) string {
+	if level := c.KernelLevels[id]; level != "" {
+		return level
+	}
+	return defaultKernelLevel(id)
+}
+func hasLevel(knob KernelKnob, level string) bool {
+	for _, candidate := range knob.Levels {
+		if candidate == level {
+			return true
+		}
+	}
+	return false
 }
 func kernelControlForKnob(id string) string {
 	switch id {
@@ -54,6 +98,14 @@ func (a *App) configuredKernelPlan(c Config) []KernelKnob {
 			plan[i].Control = "data_fsync"
 		}
 		plan[i].Enabled = kernelControlEnabled(c, plan[i].Control)
+		plan[i].Level = kernelLevel(c, plan[i].Control)
+		plan[i].Target = plan[i].Level
+		if plan[i].Level == "stock" {
+			plan[i].Target = ""
+		}
+		if plan[i].State == "available" && !hasLevel(plan[i], plan[i].Level) {
+			plan[i].State = "unsupported"
+		}
 	}
 	return plan
 }
@@ -196,15 +248,23 @@ func (a *App) kernelPlan() []KernelKnob {
 		{ID: "tcp.congestion", Label: "TCP congestion control", Target: "bbr", State: "unsupported", Detail: "Chỉ chọn BBR nếu kernel đã cung cấp. Tác động tới kết nối TCP mới; không bảo đảm giảm ping."},
 		{ID: "f2fs", Label: "F2FS /data: ngưỡng fsync", Target: "20", State: "unsupported", Detail: "Chỉ dùng node min_fsync_blocks của /data đã xác định. Cần đo độ trễ ghi thực tế."},
 	}
+	knobs[0].Levels = []string{"stock"}
+	knobs[1].Levels = []string{"stock"}
+	knobs[2].Levels = []string{"stock"}
 	eligible := []bool{a.onlyZRAMSwap(), false, false}
+	if eligible[0] {
+		knobs[0].Levels = append(knobs[0].Levels, "0", "1", "2", "3")
+	}
 	for _, v := range strings.Fields(a.readSystem("/proc/sys/net/ipv4/tcp_available_congestion_control")) {
-		if v == "bbr" {
+		if v == "bbr" || v == "cubic" {
 			eligible[1] = true
+			knobs[1].Levels = append(knobs[1].Levels, v)
 		}
 	}
 	if dev := a.dataF2FS(); dev != "" {
 		knobs[2].ID = "f2fs:" + dev
 		eligible[2] = true
+		knobs[2].Levels = append(knobs[2].Levels, "20")
 	}
 	for i := range knobs {
 		v, err := a.readKernelKnob(knobs[i].ID)
@@ -243,15 +303,16 @@ func (a *App) tuneKernel(ctx context.Context, c Config, j *Journal) error {
 	}
 	eligible := map[string]bool{}
 	for _, knob := range plan {
-		if knob.State == "available" && knob.Enabled {
+		if knob.State == "available" && knob.Enabled && knob.Level != "stock" {
 			eligible[knob.ID] = true
 		}
 	}
 	if err := a.restoreEntries(ctx, j, func(e Entry) bool { return e.Kind == "kernel" && !eligible[e.Package] }); err != nil {
 		return err
 	}
+	pressureChecked := false
 	for _, knob := range plan {
-		if knob.State != "available" || !knob.Enabled {
+		if knob.State != "available" || !knob.Enabled || knob.Level == "stock" {
 			continue
 		}
 		// Existing entries passed the preflight above. Never fight subsequent
@@ -263,6 +324,12 @@ func (a *App) tuneKernel(ctx context.Context, c Config, j *Journal) error {
 			}
 		}
 		if !owned {
+			if !pressureChecked {
+				if err := a.pressureReady(ctx); err != nil {
+					return err
+				}
+				pressureChecked = true
+			}
 			if err := a.apply(ctx, j, Entry{Kind: "kernel", Package: knob.ID, Applied: knob.Target}); err != nil {
 				return err
 			}
@@ -277,7 +344,9 @@ func (a *App) kernelTuningStatus(ctx context.Context, c Config, sync KernelSync,
 	for i := range knobs {
 		knob := &knobs[i]
 		if knob.State == "available" {
-			if !knob.Enabled {
+			if knob.Level == "stock" {
+				knob.State = "stock"
+			} else if !knob.Enabled {
 				knob.State = "disabled"
 			} else if !active {
 				knob.State = "waiting"

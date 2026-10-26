@@ -51,6 +51,35 @@ func TestAIRequestsStructuredOutputForBothProtocols(t *testing.T) {
 	}
 }
 
+func TestKernelLevelProviderRoundTripBothProtocols(t *testing.T) {
+	for _, style := range []string{"chat_completions", "responses"} {
+		t.Run(style, func(t *testing.T) {
+			a, _ := fixture(t)
+			seedKnobs(t, a)
+			must(t, a.saveAI(aiConfig("https://example.test/v1", style)))
+			calls := 0
+			tr := transportFunc(func(req *http.Request) (*http.Response, error) {
+				calls++
+				var body map[string]any
+				must(t, json.NewDecoder(req.Body).Decode(&body))
+				if !strings.Contains(pretty(body), "kernel_level") {
+					t.Fatal("missing level schema")
+				}
+				content := `{"answer":"So sánh đọc đón trong cùng workload.","actions":[{"kind":"kernel_level","control":"swap_readahead","level":"1","reason":"Đo trước và sau với cùng dữ liệu."}]}`
+				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(completedResponse(t, style, content))), Header: http.Header{}}, nil
+			})
+			r := a.advisorWithTransport(context.Background(), "Đối chiếu mức", "daily", nil, tr)
+			if calls != 1 || r["proposal_error"] != nil || r["proposal"] == nil {
+				t.Fatal(r["ai_error"], r["proposal_error"], calls)
+			}
+			p := r["proposal"].(AIProposal)
+			if len(p.Changes) != 1 || p.Changes[0].After != "1" {
+				t.Fatal(p)
+			}
+		})
+	}
+}
+
 func TestSchemaUsesExactAppsAndLiveCapabilities(t *testing.T) {
 	c := defaultConfig()
 	c.Apps["com.manual.game"] = "daily"
@@ -58,7 +87,7 @@ func TestSchemaUsesExactAppsAndLiveCapabilities(t *testing.T) {
 	knobs := []KernelKnob{{Control: "tcp_congestion", State: "unsupported"}}
 	schema := proposalSchema(legend, c, knobs, false, true)
 	variants := schema["properties"].(map[string]any)["actions"].(map[string]any)["items"].(map[string]any)["anyOf"].([]any)
-	if len(variants) != 3 || strings.Contains(pretty(schema), "app-01") || strings.Contains(pretty(schema), "com.") || strings.Contains(pretty(schema), "native-game") {
+	if len(variants) != 4 || strings.Contains(pretty(schema), "app-01") || strings.Contains(pretty(schema), "com.") || strings.Contains(pretty(schema), "native-game") {
 		t.Fatal("manual/unsupported/private app leaked into schema")
 	}
 	for _, variant := range variants {
@@ -182,6 +211,15 @@ func TestGranularKernelScheduledIncreaseHonorsPressureAndMaster(t *testing.T) {
 	}
 	actions = append(actions, AIAction{Kind: "kernel_preset", Enabled: &on, Reason: "Bật công tắc chính"})
 	p, err = makeProposal(actions, nil, c, l.Generation, a.bootID(), time.Now())
+	must(t, err)
+	must(t, atomicJSON(a.state("ai-proposal.json"), p))
+	if _, err = a.applyProposal(context.Background(), p.ID, true); err == nil {
+		t.Fatal("scheduled AI re-enabled disabled controls")
+	}
+	c.KernelTuning = true
+	c.KernelControls = map[string]bool{}
+	must(t, atomicJSON(a.state("config.json"), c))
+	p, err = makeProposal([]AIAction{{Kind: "kernel_level", Control: "tcp_congestion", Level: "cubic", Reason: "Đối chiếu mạng"}}, nil, c, l.Generation, a.bootID(), time.Now())
 	must(t, err)
 	must(t, atomicJSON(a.state("ai-proposal.json"), p))
 	must(t, atomicWrite(a.system("/proc/pressure/memory"), []byte("full avg10=2.5 avg60=0.0"), 0600))

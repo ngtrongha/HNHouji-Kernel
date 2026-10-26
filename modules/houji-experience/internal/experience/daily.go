@@ -263,7 +263,7 @@ func (a *App) resetLearning() error {
 		return err
 	}
 	defer jobUnlock()
-	for _, name := range []string{"learning.json", "daily-ai.json", "ai-job.json", "ai-proposal.json"} {
+	for _, name := range []string{"learning.json", "daily-ai.json", "ai-job.json", "ai-proposal.json", "battery-snapshot.json", "battery-job.json"} {
 		if err = os.Remove(a.state(name)); err != nil && !os.IsNotExist(err) {
 			return err
 		}
@@ -282,7 +282,7 @@ func (a *App) clearLearning() {
 		return
 	}
 	defer v()
-	for _, name := range []string{"learning-config.json", "learning.json", "daily-ai.json", "daily-attempt.json", "ai-job.json", "ai-proposal.json", "ai-application.json"} {
+	for _, name := range []string{"learning-config.json", "learning.json", "daily-ai.json", "daily-attempt.json", "ai-job.json", "ai-proposal.json", "ai-application.json", "battery-snapshot.json", "battery-job.json", "settings-preview.json", "settings-custom.json"} {
 		_ = os.Remove(a.state(name))
 	}
 }

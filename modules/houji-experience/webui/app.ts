@@ -33,7 +33,8 @@ function notify(message: string, error = false) { const box = $("notification");
 function failure(error: unknown) {
   const code = error instanceof Error ? error.message : "Không thể hoàn thành thao tác.";
   const messages:Record<string,string> = {"learning-needs-more-samples":"Chưa đủ dữ liệu đã lưu. Để module quan sát thêm ít nhất vài phút rồi cập nhật thống kê.","ai-disabled-or-not-configured":"Hãy cấu hình và bật API trong Trợ lý AI trước khi phân tích.","learning-disabled":"Ghi nhận hoặc module đang tắt; bật lại trước khi phân tích.","learning-changed-during-analysis":"Cài đặt đã đổi khi đang phân tích; kết quả không được lưu.","unknown timezone":"Múi giờ không hợp lệ. Ví dụ: Asia/Ho_Chi_Minh.","learning-history-invalid":"Lịch sử không hợp lệ. Xóa lịch sử để bắt đầu quan sát lại."};
-  notify(messages[code] || code, true);
+  const settingsErrors:Record<string,string>={"proposal-pressure-unknown":"Thiếu dữ liệu PSI hoặc thermal hợp lệ; chưa cho phép đổi mức kernel.","proposal-pressure":"Máy đang có áp lực bộ nhớ hoặc nhiệt; chưa đổi mức kernel.","proposal-control-disabled":"Control hoặc công tắc tổng đang tắt; AI không tự bật lại.","settings-preview-stale":"Cấu hình đã đổi. Xem trước lại rồi áp dụng.","settings-preview-expired":"Bản xem trước hết hạn hoặc khác boot. Tạo bản xem trước mới.","settings-transaction-conflict":"Khôi phục đang có thay đổi xung đột. Giữ nguyên dữ liệu và kiểm tra Chẩn đoán.","invalid settings backup":"Backup sai phiên bản hoặc cấu trúc.","unknown kernel level":"Mức kernel không thuộc danh sách cho phép.","unknown system choice":"Lựa chọn Android không thuộc danh sách cho phép.","owner-user-only":"Chỉ quản lý người dùng chính (user 0).","module disabled":"Module đang tắt; bật module trước khi chọn mức áp dụng."};
+  notify(messages[code] || settingsErrors[code] || (code.startsWith("system setting unsupported:")?"Chưa xác minh hỗ trợ lựa chọn Android này trên thiết bị.":code), true);
 }
 function metric(value: unknown, suffix: string, divisor = 1, digits = 0): string { return typeof value === "number" && Number.isFinite(value) ? `${(value / divisor).toLocaleString("vi-VN", { maximumFractionDigits: digits })}${suffix}` : "—"; }
 function fillAdvice(report: any) {
@@ -47,6 +48,8 @@ function render(status: any) {
   text("profile-name", labels[status.runtime?.profile] || "Quan sát");
   const reason = status.runtime?.reason || "";
   let detail = (reason.startsWith("kernel-") ? (reason === "kernel-setting-failed" ? "Tinh chỉnh kernel bị lỗi hoặc có thay đổi bên ngoài; đã dừng thử lại. Xem Chẩn đoán, xử lý rồi bật lại." : status.kernel_sync?.message) : reasons[reason]) || reason || "Chưa có trạng thái";
+  if(reason==="kernel-pressure")detail="Đang có áp lực bộ nhớ hoặc nhiệt. Chờ điều kiện phù hợp trước khi áp dụng kernel.";
+  if(reason==="kernel-pressure-unknown")detail="Thiếu số đo PSI/thermal hợp lệ; chưa áp dụng kernel. Dữ liệu thiếu không được coi là máy đang mát.";
   if (reason === "daily-default" && !status.config?.kernel_tuning) detail = "Hằng ngày · preset kernel đang tắt; quy tắc ứng dụng vẫn hoạt động.";
   text("profile-detail", detail + (status.runtime?.package ? ` · ${status.runtime.package}` : ""));
   text("kernel-sync", status.kernel_sync?.message || "Chưa có kết quả xác minh kernel.");
@@ -56,10 +59,25 @@ function render(status: any) {
   for (const knob of status.kernel_tuning?.knobs || []) {
     const row = document.createElement("div"); row.className = "app-row";
     const title = document.createElement("strong"); title.textContent = knob.label;
-    const value = document.createElement("p"); value.textContent = `${states[knob.state] || knob.state} · Hiện tại: ${knob.current || "—"} · Mục tiêu: ${knob.target}${knob.before ? ` · Ban đầu: ${knob.before}` : ""}`;
+    const value = document.createElement("p"); value.textContent = `${knob.state==="stock"?"Giữ gốc":states[knob.state] || knob.state} · Hiện tại: ${knob.current || "—"} · Mục tiêu: ${knob.level==="stock"?"hoàn tác override":knob.target}${knob.before ? ` · Ban đầu: ${knob.before}` : ""}`;
     const detail = document.createElement("small"); detail.textContent = knob.detail;
-    const content = document.createElement("div"); content.append(title,value,detail); row.append(content); knobs.append(row);
+    const content = document.createElement("div"); content.append(title,value,detail); row.append(content);
+    row.dataset.controlName=knob.label;
+    if(knob.control){
+      const on=document.createElement("input");on.type="checkbox";on.checked=knob.enabled;on.setAttribute("aria-label",`Bật ${knob.label}`);
+      const label=document.createElement("label");label.className="check";label.append(on,document.createTextNode("Bật điều khiển này"));
+      const levels=document.createElement("select");levels.setAttribute("aria-label",`Mức ${knob.label}`);
+      for(const level of knob.levels || ["stock"]){const option=document.createElement("option");option.value=level;option.textContent=level==="stock"?"Gốc · hoàn tác override":level;levels.append(option);}
+      levels.value=knob.level;
+      on.addEventListener("change",async()=>{on.disabled=true;try{await act({action:"kernel_control_set",control:knob.control,enabled:on.checked},"Đã lưu lựa chọn. Theo dõi giá trị thực để xác nhận áp dụng.");}catch(error){failure(error);on.checked=knob.enabled;}finally{on.disabled=false;}});
+      levels.addEventListener("change",async()=>{levels.disabled=true;try{await act({action:"kernel_level_set",control:knob.control,level:levels.value},"Đã lưu mức. Watcher áp dụng khi đủ điều kiện.");}catch(error){failure(error);levels.value=knob.level;}finally{levels.disabled=false;}});
+      row.append(label,levels);
+    }
+    knobs.append(row);
   }
+  filterControls();
+  const observed=status.report?.battery_observation;
+  text("battery-observation",observed?`${observed.percent_per_hour===undefined?"Chưa đủ bằng chứng tính hao pin":metric(observed.percent_per_hour,"%/giờ",1,2)} · ${metric(observed.observed_seconds," giờ có mẫu",3600,2)} · ${metric(observed.drop_percent,"% giảm",1,1)} · ${observed.intervals || 0} khoảng liên tiếp.\n${observed.note || ""}`:"Chưa đủ mẫu; khoảng thiếu dữ liệu không được tính.");
   text("watcher-state", status.watcher_running ? "Watcher đang chạy" : "Watcher chưa chạy");
   text("ram-value", metric(metrics.MemAvailable_kib, " GB", 1024 * 1024, 2));
   text("ram-total", `Tổng: ${metric(metrics.MemTotal_kib, " GB", 1024 * 1024, 2)}`);
@@ -82,7 +100,7 @@ function schedule() { if (timer) clearTimeout(timer); if (document.hidden || !av
 
 async function act(request: RPC, message?: string) { const data = await rpc(request); if (message) notify(message); await refresh(); return data; }
 function bind(id: string, callback: () => Promise<void>) {
-  $(id).addEventListener("click", async () => { const button = $<HTMLButtonElement>(id); button.disabled = true; try { await callback(); } catch (error) { failure(error); } finally { button.disabled = id==="ai-undo"?lastApplication.status!=="applied":["ai-ask","api-test","learning-analyze","ai-new-chat"].includes(id) && (!!aiJob || aiStarting); } });
+  $(id).addEventListener("click", async () => { const button = $<HTMLButtonElement>(id); button.disabled = true; try { await callback(); } catch (error) { failure(error); } finally { button.disabled = id==="settings-apply"?!settingsToken:id==="ai-undo"?lastApplication.status!=="applied":["ai-ask","api-test","learning-analyze","ai-new-chat"].includes(id) && (!!aiJob || aiStarting); } });
 }
 
 function showTab(id: string) {
@@ -92,6 +110,8 @@ function showTab(id: string) {
   for (const section of document.querySelectorAll<HTMLElement>("main > section")) section.hidden = section.id !== id;
   if (id === "ai") void loadAI().catch(failure);
   if (id === "habits") void loadLearning().catch(failure);
+  if (id === "tools") void loadSystemSettings().catch(failure);
+  if (id === "overview") void loadBattery(false).catch(failure);
 }
 
 async function loadAI() {
@@ -212,8 +232,9 @@ function renderProposal(container:HTMLElement,result:any){
   const section=document.createElement("div");section.className="proposal-card";
   const title=document.createElement("h4");title.textContent="Các thay đổi được đề xuất";section.append(title);
   const names:Record<string,string>={...labels,automatic:"Tự chọn",on:"Bật",off:"Tắt"};
-  const controls:Record<string,string>={swap_readahead:"Đọc đón swap · target 0",tcp_congestion:"TCP congestion · target BBR",data_fsync:"Fsync /data · target 20"};
-  for(const change of plan.changes || []){const row=document.createElement("div");row.className="proposal-change";const label=document.createElement("strong");label.textContent=change.kind==="app_profile"?`${change.app_id} · ${change.package}`:change.kind==="kernel_control"?controls[change.control] || change.control:"Preset kernel Hằng ngày";const values=document.createElement("p");values.textContent=`${names[change.before] || change.before} → ${names[change.after] || change.after}`;const reason=document.createElement("p");reason.textContent=change.reason;row.append(label,values,reason);section.append(row);}
+  const controls:Record<string,string>={swap_readahead:"Đọc đón swap",tcp_congestion:"TCP congestion",data_fsync:"Fsync /data"};
+  names.stock="Gốc · hoàn tác override";
+  for(const change of plan.changes || []){const row=document.createElement("div");row.className="proposal-change";const label=document.createElement("strong");label.textContent=change.kind==="app_profile"?`${change.app_id} · ${change.package}`:["kernel_control","kernel_level"].includes(change.kind)?controls[change.control] || change.control:"Preset kernel Hằng ngày";const values=document.createElement("p");values.textContent=`${names[change.before] || change.before} → ${names[change.after] || change.after}`;const reason=document.createElement("p");reason.textContent=change.reason;row.append(label,values,reason);section.append(row);}
   const status=document.createElement("p");status.className="footnote";
   const receipt=lastApplication.proposal_id===plan.id?lastApplication:result.application;
   status.textContent=receipt?.status==="applied"?"Đã lưu cấu hình. Watcher áp dụng khi đủ điều kiện; có thể hoàn tác lượt gần nhất.":receipt?.status==="undone"?"Đề xuất này đã được hoàn tác. Phân tích lại để lấy đề xuất mới.":receipt?.error?proposalMessage(receipt.error):"Chỉ các thay đổi trong bảng này được áp dụng sau khi kiểm tra lại kernel và cấu hình.";
@@ -254,6 +275,7 @@ function showDaily(daily: any) {
   $("learning-legend").hidden = false;
 }
 async function loadLearning() {
+  const completedJob=renderedJob;
   const status = await rpc<any>({ action: "learning_status" });
   if (status.error) throw new Error(status.error);
   const c = status.config;
@@ -272,7 +294,7 @@ async function loadLearning() {
   hours.forEach((seconds,hour) => { const row = document.createElement("label"); row.className = "habit-hour"; const meter = document.createElement("meter"); meter.min = 0; meter.max = Math.max(60,...hours); meter.value = seconds; meter.setAttribute("aria-label", `${hour} giờ: ${Math.round(seconds/60)} phút`); row.append(document.createTextNode(`${String(hour).padStart(2,"0")}h`),meter,document.createTextNode(`${Math.round(seconds/60)}′`)); chart.append(row); });
   const apps = $("learning-apps"); apps.replaceChildren();
   for (const item of status.apps || []) { const row = document.createElement("p"); row.className = "app-name"; row.textContent = `${item.id} · ${item.package} · ${Math.round(item.seconds/60)} phút / ${item.days} ngày / ${item.sessions} phiên · ${labels[item.profile] || "Theo quy tắc tự động"}`; apps.append(row); }
-  text("learning-preview", pretty(await rpc({action:"learning_preview"})));await loadApplication(); showDaily(status.daily);
+  text("learning-preview", pretty(await rpc({action:"learning_preview"})));await loadApplication(); if(completedJob===renderedJob)showDaily(status.daily);
 }
 $("learning-form").addEventListener("submit", async event => {
   event.preventDefault(); const button = $("learning-form").querySelector<HTMLButtonElement>('button[type="submit"]')!; button.disabled = true;
@@ -282,7 +304,66 @@ bind("learning-refresh", loadLearning);
 bind("learning-reset", async () => { await rpc({action:"learning_reset"}); await loadLearning(); notify("Đã xóa lịch sử và phân tích. Bắt đầu quan sát lại; không tự thử thêm API hôm nay."); });
 bind("learning-analyze", async () => { showTab("ai");await startAI("daily"); });
 
-document.addEventListener("visibilitychange", () => { if (document.hidden) { if (timer) clearTimeout(timer);if(aiPollTimer)clearTimeout(aiPollTimer); input("api-key").value = ""; } else { void refresh();if(aiJob)void pollAI(); schedule(); } });
+const choiceNames:Record<string,string>={stock:"Gốc · không override",off:"Tắt","0.5":"0,5×","1h":"1 giờ","2h":"2 giờ","4h":"4 giờ"};
+let batteryGeneration=0;
+let batteryTimer:ReturnType<typeof setTimeout>|undefined;
+async function loadBattery(force:boolean){
+  if(!available()||document.hidden)return;
+  const generation=++batteryGeneration;if(batteryTimer)clearTimeout(batteryTimer);
+  const battery=await rpc<any>({action:"battery_check"});
+  text("battery-check",`Trạng thái: ${battery.status || "Chưa biết"} · ${metric(battery.capacity,"%")}
+Nhiệt độ pin: ${metric(battery.temp," °C",10,1)} · Chu kỳ: ${metric(battery.cycle_count,"")}
+Điện áp: ${metric(battery.voltage_now," V",1000000,2)} · Dòng pin: ${metric(battery.current_now," mA",1000)}
+Dung lượng báo cáo: ${metric(battery.charge_full," mAh",1000)} · Thiết kế: ${metric(battery.charge_full_design," mAh",1000)}
+Tình trạng do driver báo: ${battery.health || "Chưa biết"}. Không suy ra độ chai khi thiếu chỉ số.`);
+  text("battery-android","Đang lấy snapshot Android…");
+  const show=(job:any)=>{
+    if(generation!==batteryGeneration)return;
+    if(job.state==="queued"||job.state==="running"){
+      text("battery-android","Đang đọc thống kê Android. Có thể chuyển trang.");
+      batteryTimer=setTimeout(()=>{if(document.hidden)return;void rpc({action:"battery_snapshot_status",job_id:job.id}).then(show).catch(failure);},500);return;
+    }
+    const errors:Record<string,string>={"battery-timeout":"Đọc quá 8 giây.","battery-format-unsupported":"Chưa hỗ trợ định dạng thống kê của ROM.","battery-response-too-large":"Thống kê vượt 2 MiB.","battery-job-interrupted":"Tác vụ bị gián đoạn.","battery-read-failed":"Không đọc được thống kê.","battery-worker-unavailable":"Không khởi động được worker."};
+    const s=job.result;
+    text("battery-android",job.state==="failed"?`${errors[job.error] || "Không đọc được thống kê."} Không tự thử lại.`:s?.anchor?`${s.percent_per_hour===undefined?"Chưa đủ bằng chứng tính hao pin":metric(s.percent_per_hour,"%/giờ",1,2)} · ${metric(s.screen_off_seconds," giờ screen-off",3600,2)} · ${metric(s.screen_off_drop_percent,"% giảm",1,1)}
+Mốc thống kê Android: ${s.anchor} · Snapshot: ${s.at || "chưa biết"}
+${s.note || "Từ mốc thống kê của Android; không phải chắc chắn từ lần rút sạc."}`:"Chưa có snapshot hợp lệ.");
+  };
+  show(await rpc({action:"battery_snapshot_start",force}));
+}
+async function loadSystemSettings(){
+  const controls=await rpc<any[]>({action:"system_settings_status"});const list=$("system-controls");list.replaceChildren();
+  for(const control of controls){
+    const row=document.createElement("div");row.className="app-row";row.dataset.controlName=control.label;
+    const label=document.createElement("label");label.textContent=control.label;
+    const choices=document.createElement("select");choices.setAttribute("aria-label",control.label);
+    for(const choice of control.choices){const option=document.createElement("option");option.value=choice;option.textContent=choiceNames[choice] || choice;choices.append(option);}
+    if(!control.choices.includes(control.choice)){const option=document.createElement("option");option.value=control.choice;option.textContent=`${control.choice} · không còn hỗ trợ`;choices.append(option);}
+    choices.value=control.choice;const detail=document.createElement("p");const states:Record<string,string>={unsupported:"Chưa xác minh hỗ trợ",available:"Giữ OEM",pending:"Đã lưu · chờ áp dụng",applied:"Đã áp dụng và đọc lại",conflict:"Thay đổi bên ngoài · giữ nguyên","already-set":"Đã có giá trị này"};detail.textContent=`${states[control.state] || control.state} · Hiện tại: ${control.current.join(" / ")} · AI chỉ đọc.`;
+    choices.addEventListener("change",async()=>{choices.disabled=true;try{await rpc({action:"system_setting_set",id:control.id,choice:choices.value});notify("Đã lưu lựa chọn Android. Watcher áp dụng khi đủ điều kiện.");await loadSystemSettings();}catch(error){failure(error);choices.value=control.choice;}finally{choices.disabled=false;}});
+    label.append(choices);row.append(label,detail);list.append(row);
+  }
+  input("boot-notify").checked=!!latest?.config?.boot_notify;
+  filterControls();
+}
+function filterControls(){const query=input("control-search").value.toLocaleLowerCase("vi");for(const row of document.querySelectorAll<HTMLElement>("[data-control-name]"))row.hidden=!(row.dataset.controlName || "").toLocaleLowerCase("vi").includes(query);}
+input("control-search").addEventListener("input",filterControls);
+input("boot-notify").addEventListener("change",async()=>{try{await act({action:"boot_notify_set",enabled:input("boot-notify").checked},"Đã lưu lựa chọn thông báo boot.");}catch(error){failure(error);}});
+bind("battery-refresh",async()=>loadBattery(true));
+bind("system-refresh",loadSystemSettings);
+let settingsToken="";
+async function previewSettings(mode:string,backup?:unknown){
+  settingsToken="";$<HTMLButtonElement>("settings-apply").disabled=true;
+  const result=await rpc<any>({action:"settings_preview",mode,backup});
+  if(result.saved){notify("Đã lưu preset Cá nhân trên máy.");return;}
+  settingsToken=result.token;text("settings-preview",pretty(result));$<HTMLButtonElement>("settings-apply").disabled=!settingsToken;
+}
+for(const button of document.querySelectorAll<HTMLButtonElement>("[data-preset]"))button.addEventListener("click",()=>void previewSettings(button.dataset.preset!).catch(failure));
+bind("settings-apply",async()=>{const token=settingsToken;settingsToken="";await act({action:"settings_apply",token},"Đã lưu cấu hình đã xem trước. Kiểm tra trạng thái thực sau khi watcher áp dụng.");$<HTMLButtonElement>("settings-apply").disabled=true;await loadSystemSettings();});
+bind("settings-backup",async()=>{const result=await rpc<any>({action:"settings_backup_export"});notify(`Đã xuất cấu hình không có khóa API: ${result.path}. File chứa quy tắc ứng dụng bạn đã chọn.`);});
+input("settings-import").addEventListener("change",async()=>{try{const file=input("settings-import").files?.[0];if(!file)return;if(file.size>60000)throw new Error("Backup vượt 60 KiB.");await previewSettings("import",JSON.parse(await file.text()));}catch(error){failure(error);}});
+
+document.addEventListener("visibilitychange", () => { if (document.hidden) { if (timer) clearTimeout(timer);if(aiPollTimer)clearTimeout(aiPollTimer);if(batteryTimer)clearTimeout(batteryTimer); input("api-key").value = ""; } else { void refresh();if(aiJob)void pollAI(); schedule(); } });
 window.addEventListener("pagehide", () => { if (timer) clearTimeout(timer); input("api-key").value = ""; });
 if (!available()) { $("bridge-warning").hidden = false; text("watcher-state", "Không có bridge"); }
-else { void refresh().then(schedule); }
+else { void refresh().then(()=>{schedule();void loadBattery(false).catch(failure);}); }

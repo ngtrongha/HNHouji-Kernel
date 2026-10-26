@@ -130,7 +130,7 @@ Trả lời cuối cùng bằng tiếng Việt, dùng Markdown dễ đọc. Tr�
 Chỉ dùng dữ liệu được cung cấp. MemAvailable_kib/1048576 là GiB RAM khả dụng. cpu_load_average_1m là số tác vụ chạy/chờ trung bình, có thể gồm chờ I/O; không phải phần trăm CPU và không đủ để kết luận nghẽn CPU.
 psi_some_avg10 và psi_full_avg10 là phần trăm thời gian chờ do áp lực bộ nhớ trong cửa sổ trung bình 10 giây; FULL chỉ thời gian tất cả tác vụ không nhàn rỗi cùng chờ. PSI không đo điện năng hoặc pin chờ; giá trị 0 trong một mẫu không chứng minh hệ thống luôn hết áp lực.
 battery_celsius đo nhiệt độ pin, không phải SoC. Một mức phần trăm pin không đủ đo tiêu hao. Không suy diễn benchmark, FPS, tiết kiệm pin hoặc nguyên nhân từ một mẫu. Ngưỡng trong báo cáo chỉ mang tính chẩn đoán.
-Không đề nghị sửa WALT, HZ, thermal, cấu hình MM/ZRAM, DRM, F2FS hoặc kernel pins. Ngoại lệ duy nhất: bật/tắt từng kernel_control đã có trong snapshot theo target cố định của module, không tự chọn tham số/giá trị mới. Không đưa lệnh shell/yêu cầu thực thi. Nêu rõ điều chưa xác định và đề xuất đo lặp cùng workload.`
+Không đề nghị sửa WALT, HZ, thermal, cấu hình MM/ZRAM, DRM, F2FS hoặc kernel pins. Ngoại lệ: kernel_level chỉ chọn các mức trong levels của ba control có sẵn; kernel_control cũ chỉ bật/tắt. Không tự tạo tham số/giá trị mới. Android system settings chỉ đọc. Không đưa lệnh shell/yêu cầu thực thi. Nêu rõ điều chưa xác định và đề xuất đo lặp cùng workload.`
 
 func (a *App) Ask(ctx context.Context, prompt string, test bool) map[string]any {
 	return a.askWithTransport(ctx, prompt, test, nil)

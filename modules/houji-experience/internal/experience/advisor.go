@@ -30,6 +30,9 @@ func (a *App) advisorEvidence(ctx context.Context, at time.Time) (map[string]any
 	sync := a.KernelSync(ctx)
 	result["kernel_compatibility"] = map[string]any{"ready": sync.Ready, "state": sync.State}
 	result["kernel_controls"] = a.configuredKernelPlan(core)
+	result["system_settings_read_only"] = a.systemSettingsStatus(ctx, core)
+	result["battery"] = a.batteryCheck()
+	result["battery_snapshot"] = a.batterySnapshotView()
 	usage, legend, err := a.dailySnapshot(at)
 	if err != nil {
 		result["history_available"] = false
@@ -41,7 +44,7 @@ func (a *App) advisorEvidence(ctx context.Context, at time.Time) (map[string]any
 	result["daily_comparison"] = rows
 	result["days_with_samples"] = len(rows)
 	result["comparison_limits"] = "Days may have different workloads and coverage. Means are sample means, not time-weighted. No causal performance or battery claim. CPU busy is whole-device; not per-app CPU."
-	result["module_controls"] = []string{"app_profile: automatic/daily/native-game/windows-game/linux; native-game only where performance_supported=true", "kernel_preset: master on/off; kernel_control: each existing kernel_controls entry on/off, enabling uses fixed target, disabling restores owned original. No custom knob values."}
+	result["module_controls"] = []string{"app_profile: automatic/daily/native-game/windows-game/linux; native-game only where performance_supported=true", "kernel_level: choose only the exact levels supplied per control; stock restores owned override. Scheduled runs can change manually selected levels only on enabled controls with the master on. Android system settings are read-only to AI."}
 	return result, legend
 }
 func comparisonRows(days map[string]any) []map[string]any {

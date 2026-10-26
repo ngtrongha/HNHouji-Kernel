@@ -24,6 +24,21 @@ func proposalSchema(legend []HabitApp, c Config, knobs []KernelKnob, ready, auto
 	}
 	supported := false
 	for _, knob := range knobs {
+		if automatic && (!c.KernelTuning || !kernelControlEnabled(c, knob.Control)) {
+			continue
+		}
+		levels := []string{"stock"}
+		if ready && knob.Current != "" {
+			levels = knob.Levels
+		}
+		if len(levels) == 0 {
+			levels = []string{"stock"}
+		}
+		variants = append(variants, schemaObject(map[string]any{
+			"kind":    map[string]any{"type": "string", "enum": []string{"kernel_level"}},
+			"control": map[string]any{"type": "string", "enum": []string{knob.Control}},
+			"level":   map[string]any{"type": "string", "enum": levels}, "reason": reason,
+		}, "kind", "control", "level", "reason"))
 		values := []bool{false}
 		if ready && knob.State == "available" {
 			values = append(values, true)
@@ -36,7 +51,7 @@ func proposalSchema(legend []HabitApp, c Config, knobs []KernelKnob, ready, auto
 		}, "kind", "control", "enabled", "reason"))
 	}
 	values := []bool{false}
-	if supported {
+	if supported && (!automatic || c.KernelTuning) {
 		values = append(values, true)
 	}
 	variants = append(variants, schemaObject(map[string]any{

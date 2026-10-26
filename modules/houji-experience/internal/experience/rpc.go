@@ -14,6 +14,13 @@ type Request struct {
 	Guide      string          `json:"guide,omitempty"`
 	Protected  bool            `json:"protected,omitempty"`
 	Enabled    bool            `json:"enabled,omitempty"`
+	Control    string          `json:"control,omitempty"`
+	Level      string          `json:"level,omitempty"`
+	ID         string          `json:"id,omitempty"`
+	Choice     string          `json:"choice,omitempty"`
+	Backup     *SettingsBackup `json:"backup,omitempty"`
+	Token      string          `json:"token,omitempty"`
+	Force      bool            `json:"force,omitempty"`
 	AI         *AIConfig       `json:"ai,omitempty"`
 	Prompt     string          `json:"prompt,omitempty"`
 	Learning   *LearningConfig `json:"learning,omitempty"`
@@ -39,6 +46,31 @@ func (a *App) Dispatch(ctx context.Context, r Request) Response {
 
 func (a *App) dispatch(ctx context.Context, r Request) (any, error) {
 	switch r.Action {
+	case "system_settings_status":
+		c, err := a.config()
+		if err != nil {
+			return nil, err
+		}
+		return a.systemSettingsStatus(ctx, c), nil
+	case "battery_check":
+		return a.batteryCheck(), nil
+	case "battery_snapshot_start":
+		return a.startBatteryJob(r.Force, a.launchBatteryWorker)
+	case "battery_snapshot_status":
+		return a.batteryJobStatus(r.JobID)
+	case "settings_backup":
+		return a.settingsBackup()
+	case "settings_backup_export":
+		backup, err := a.settingsBackup()
+		if err != nil {
+			return nil, err
+		}
+		path, err := a.exportPublicJSON(backup, "HNHouji-settings")
+		return map[string]string{"path": path}, err
+	case "settings_preview":
+		return a.previewSettings(ctx, r)
+	case "settings_apply":
+		return a.applySettingsPreview(ctx, r.Token)
 	case "ai_proposal_apply":
 		return a.applyProposal(ctx, r.ProposalID, false)
 	case "ai_application_status":
@@ -114,6 +146,9 @@ func (a *App) dispatch(ctx context.Context, r Request) (any, error) {
 		return nil, e
 	}
 	defer unlock()
+	if e = a.recoverSettingsTransaction(ctx); e != nil {
+		return nil, e
+	}
 	c, e := a.config()
 	if e != nil {
 		if r.Action != "disable" && r.Action != "restore" {
@@ -126,6 +161,75 @@ func (a *App) dispatch(ctx context.Context, r Request) (any, error) {
 		c = disabledConfig()
 	}
 	switch r.Action {
+	case "kernel_level_set", "kernel_control_set", "system_setting_set", "boot_notify_set":
+		if !a.ownerUser(ctx) {
+			return nil, errors.New("owner-user-only")
+		}
+		next := cloneConfig(c)
+		switch r.Action {
+		case "kernel_level_set":
+			if !validKernelLevel(r.Control, r.Level) {
+				return nil, errors.New("unknown kernel level")
+			}
+			if r.Level != "stock" {
+				if e = a.manualSettingsReady(ctx, c); e != nil {
+					return nil, e
+				}
+				if e = a.pressureReady(ctx); e != nil {
+					return nil, e
+				}
+				if !a.levelAvailable(c, r.Control, r.Level) {
+					return nil, errors.New("proposal-kernel-unsupported")
+				}
+			}
+			if next.KernelLevels == nil {
+				next.KernelLevels = map[string]string{}
+			}
+			next.KernelLevels[r.Control] = r.Level
+		case "kernel_control_set":
+			if !validKernelControl(r.Control) {
+				return nil, errors.New("unknown kernel control")
+			}
+			if r.Enabled {
+				if e = a.manualSettingsReady(ctx, c); e != nil {
+					return nil, e
+				}
+				if e = a.pressureReady(ctx); e != nil {
+					return nil, e
+				}
+				if !a.levelAvailable(c, r.Control, kernelLevel(c, r.Control)) {
+					return nil, errors.New("proposal-kernel-unsupported")
+				}
+			}
+			if next.KernelControls == nil {
+				next.KernelControls = map[string]bool{}
+			}
+			next.KernelControls[r.Control] = r.Enabled
+		case "system_setting_set":
+			if !validSystemChoice(r.ID, r.Choice) {
+				return nil, errors.New("unknown system choice")
+			}
+			if r.Choice != "stock" {
+				if e = a.manualSettingsReady(ctx, c); e != nil {
+					return nil, e
+				}
+			}
+			if next.SystemSettings == nil {
+				next.SystemSettings = map[string]string{}
+			}
+			next.SystemSettings[r.ID] = r.Choice
+			if r.Choice != "stock" {
+				if e = a.validateSystemChoices(ctx, next); e != nil {
+					return nil, e
+				}
+			}
+		case "boot_notify_set":
+			next.BootNotify = r.Enabled
+		}
+		if e = a.saveSettingsConfig(ctx, c, next); e != nil {
+			return nil, e
+		}
+		return a.snapshotConfig(), nil
 	case "kernel_tuning_set":
 		c.KernelTuning = r.Enabled
 		c.Generation++

@@ -4,6 +4,8 @@ Module KSU độc lập, có WebUI tiếng Việt, profile cục bộ và AI API
 Không tải model AI; tinh chỉnh cần kernel có metadata đồng bộ. Đây là **preview**, chưa có
 chứng nhận hiệu năng hay pin chờ trên thiết bị.
 
+Từ **0.6.0-preview**, module có các mức kernel theo allowlist cho AI, tùy chọn Android thủ công, thông tin pin/snapshot Android và preset/backup có xem trước. Phần Android mặc định giữ OEM; không nhập preset WALT/thermal/ZRAM từ HyperCool. Xem hướng dẫn để biết quyền AI theo lịch và giới hạn kiểm chứng thiết bị.
+
 Xem [hướng dẫn đầy đủ](../modules/houji-experience/README.md) để cài đặt, cấu
 hình API sau cài, sử dụng CLI, build, kiểm thử và khôi phục.
 

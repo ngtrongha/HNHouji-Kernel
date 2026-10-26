@@ -16,3 +16,6 @@ func processAlive(pid int) bool {
 }
 
 func startDetached(path, id string) error { return errors.New("AI worker requires Android") }
+func startDetachedCommand(path, command, id string) error {
+	return errors.New("worker requires Android")
+}

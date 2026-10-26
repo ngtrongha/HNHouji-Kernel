@@ -128,6 +128,9 @@ func (a *App) Recover(ctx context.Context) error {
 		return e
 	}
 	defer unlock()
+	if err := a.recoverSettingsTransaction(ctx); err != nil {
+		return err
+	}
 	j, e := a.journal()
 	if e != nil {
 		return e
@@ -346,6 +349,9 @@ func (a *App) Step(ctx context.Context, pkg string, asleep bool) error {
 		return e
 	}
 	defer unlock()
+	if err := a.recoverSettingsTransaction(ctx); err != nil {
+		return err
+	}
 	c, e := a.config()
 	if e != nil {
 		_ = a.restoreAll(ctx)
@@ -382,8 +388,16 @@ func (a *App) Step(ctx context.Context, pkg string, asleep bool) error {
 		return nil
 	}
 	if err := a.tuneKernel(ctx, c, &j); err != nil {
-		_ = a.restoreEntries(ctx, &j, func(Entry) bool { return true })
+		restoreErr := a.restoreEntries(ctx, &j, func(Entry) bool { return true })
 		a.protectedStamp = ""
+		if restoreErr == nil && (err.Error() == "proposal-pressure" || err.Error() == "proposal-pressure-unknown") {
+			reason := "kernel-pressure"
+			if err.Error() == "proposal-pressure-unknown" {
+				reason = "kernel-pressure-unknown"
+			}
+			a.runtime("observe", "", reason)
+			return nil
+		}
 		a.writeFailureStamp = kernelStamp
 		a.writeFailureReason = "kernel-setting-failed"
 		a.runtime("observe", "", "kernel-setting-failed")
@@ -392,6 +406,13 @@ func (a *App) Step(ctx context.Context, pkg string, asleep bool) error {
 	stampBytes, _ := json.Marshal(c.Protected)
 	stamp := fmt.Sprintf("%d:%s", c.Generation, digest(stampBytes))
 	if a.protectedStamp != stamp {
+		if err := a.tuneSystem(ctx, c, &j); err != nil {
+			_ = a.restoreEntries(ctx, &j, func(Entry) bool { return true })
+			a.writeFailureStamp = kernelStamp
+			a.writeFailureReason = "setting-failed"
+			a.runtime("observe", "", "setting-failed")
+			return err
+		}
 		if err := a.protect(ctx, c, &j); err != nil {
 			_ = a.restoreEntries(ctx, &j, func(Entry) bool { return true })
 			a.writeFailureStamp = kernelStamp
@@ -441,6 +462,9 @@ func (a *App) Step(ctx context.Context, pkg string, asleep bool) error {
 }
 
 func (a *App) Watch(ctx context.Context) error {
+	if err := a.migrateConfiguration(); err != nil {
+		return err
+	}
 	if e := a.compatible(ctx); e != nil {
 		return e
 	}
@@ -451,6 +475,9 @@ func (a *App) Watch(ctx context.Context) error {
 	defer unlock()
 	if e = a.Recover(ctx); e != nil {
 		a.runtime("observe", "", "restore-conflict")
+	}
+	if c, err := a.config(); err == nil && c.BootNotify && a.ownerUser(ctx) {
+		_, _ = a.run(ctx, "cmd", "notification", "post", "-S", "bigtext", "-t", "HNHouji Experience", "houji_boot", "Watcher đã khởi động. Xem WebUI để kiểm tra trạng thái áp dụng.")
 	}
 	previous := ""
 	count := 0
@@ -507,7 +534,7 @@ func (a *App) snapshotConfig() map[string]any {
 	if e != nil {
 		return map[string]any{"error": "configuration-invalid"}
 	}
-	return map[string]any{"enabled": c.Enabled, "kernel_tuning": c.KernelTuning, "kernel_controls": c.KernelControls, "default_profile": "daily", "apps": c.Apps, "protected": c.Protected, "reboot_required": c.MigrationBoot != "" && c.MigrationBoot == a.bootID()}
+	return map[string]any{"enabled": c.Enabled, "kernel_tuning": c.KernelTuning, "kernel_controls": c.KernelControls, "kernel_levels": c.KernelLevels, "system_settings": c.SystemSettings, "boot_notify": c.BootNotify, "default_profile": "daily", "apps": c.Apps, "protected": c.Protected, "reboot_required": c.MigrationBoot != "" && c.MigrationBoot == a.bootID()}
 }
 
 func (a *App) CleanupBoot(ctx context.Context) error {

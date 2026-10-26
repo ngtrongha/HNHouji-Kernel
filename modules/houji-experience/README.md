@@ -1,4 +1,4 @@
-# HNHouji Experience 0.5.0-preview
+# HNHouji Experience 0.6.0-preview
 
 Module KernelSU độc lập cho Xiaomi 14 **houji**, arm64, GKI 6.1 và user 0.
 WebUI mở trong Manager; CLI là phương án dự phòng. Không cần metamodule,
@@ -7,6 +7,38 @@ defconfig, pin/driver và không đóng gói model AI.
 
 **Preview chưa được chứng nhận trên thiết bị.** Test máy phát triển và mock
 Android không thay thế thử nghiệm reboot, thông báo, game và pin chờ trên houji.
+
+## Mới trong 0.6.0-preview
+
+- Mỗi control kernel có công tắc và bộ mức đóng: swap readahead **Gốc/0/1/2/3**, TCP **Gốc/CUBIC/BBR** theo thuật toán có sẵn, F2FS `/data` **Gốc/20**. Gốc hoàn tác entry module sở hữu, không đoán stock. Page-cluster là số mũ số trang: 0/1/2/3 tương ứng 1/2/4/8 trang; không cấu hình lại ZRAM.
+- AI dùng action `kernel_level` theo schema capability. Khi đã bật tự áp dụng theo lịch, AI được đổi mức đặt tay chỉ trên control đang bật khi master bật; không tự bật lại mục đã tắt. Giữ điều kiện hai ngày, 30 mẫu, 1.800 giây, identity/pressure/stale-plan/undo. Profile app thủ công vẫn được bảo vệ. Hợp đồng boolean cũ còn được xử lý; không nhận path, shell hoặc số tùy ý.
+- Trong **Tiện ích**, Android do bạn điều khiển, AI chỉ đọc: Wi-Fi/Bluetooth scanning riêng, vị trí nền 1/2/4 giờ, ngưỡng Battery Saver 15/20/30%, độ sáng 90/80/70/60% khi Saver, blur framework, animation 0,5×/1× và peak refresh 60/90/120 Hz theo primary display/minimum hiện tại. Mặc định giữ OEM; thiếu capability hiện chưa hỗ trợ. Không thay SurfaceFlinger props hoặc thêm keeper theo dõi chạm. Scanning/vị trí có đánh đổi với dịch vụ nền.
+- Battery check chỉ đọc driver; dòng hiển thị là dòng pin, không phải dòng charger định mức. Thiếu chỉ số không biến thành 0 hoặc phần trăm độ chai.
+- Pin chờ tách hai nguồn: khoảng screen-off liên tiếp watcher quan sát và snapshot Android `dumpsys batterystats --checkin`. Snapshot chạy worker theo yêu cầu, cache năm phút, timeout tám giây, tối đa 2 MiB; không retry/daemon/reset thống kê và không lưu UID/package/raw output. Mốc Android không được gọi mặc định là từ lần rút sạc. Screen-off không đồng nghĩa deep sleep; mẫu phần trăm có độ lượng tử 1%.
+- Preset **Giữ gốc**, **Kernel hiện có**, **Cá nhân** phải xem trước rồi áp dụng. Backup JSON phiên bản 1 chứa cấu hình app/kernel/Android/lịch, xuất vào **Download/HNHouji**. File có tên package trong quy tắc app bạn chọn: chỉ chia sẻ khi cần. Không có API key, endpoint, kết quả AI, journal hoặc receipt. Restore giữ quyền gọi AI/tự áp dụng hiện tại, kiểm tra lại capability, báo app đã gỡ trong preview và từ chối preview sai boot/quá hạn mười phút/đã lỗi thời.
+- Cấu hình nội bộ chuyển atomic từ phiên bản 1 sang 2, giữ lựa chọn cũ. Mức chưa lưu vẫn là 0/BBR/20. Module cũ không hiểu version 2; không downgrade bằng cách sửa version thủ công. Thông báo boot mặc định tắt và chỉ báo watcher khởi động.
+- Kết quả AI vừa hoàn tất không bị snapshot Thói quen cũ ghi đè khi đổi tab. Test trì hoãn RPC tái hiện được lỗi cũ; mock giữ daily result giống backend.
+
+### RPC bổ sung
+
+Dùng kênh JSON/base64 sẵn có, không truyền lệnh shell trong dữ liệu:
+
+| Action | Dữ liệu |
+| --- | --- |
+| `kernel_level_set` | `control`, `level` thuộc enum |
+| `kernel_control_set` | `control`, `enabled` boolean |
+| `system_setting_set` | `id`, `choice` theo capability |
+| `system_settings_status` | Đọc lựa chọn, mức hỗ trợ và giá trị thực |
+| `boot_notify_set` | `enabled` boolean |
+| `battery_check` | Chỉ đọc chỉ số pin |
+| `battery_snapshot_start` / `battery_snapshot_status` | `force` boolean / `job_id` backend trả |
+| `settings_backup` / `settings_backup_export` | Đọc cấu hình portable / xuất file chia sẻ không có secret |
+| `settings_preview` | `mode`: stock/kernel/custom/save_custom/import; import có `backup` typed |
+| `settings_apply` | `token` của preview còn hạn, đúng boot/baseline |
+
+AI thêm `{ "kind":"kernel_level", "control":"swap_readahead", "level":"1", "reason":"..." }`. Mỗi control tối đa một action trong cả nhóm level/boolean. Đổi mức giữ giá trị journal ban đầu; undo không ghi đè field đã đổi bên ngoài. Receipt AI cũ được giữ, không nhập từ backup.
+
+Đóng gói bằng workflow Houji Experience, ghép với kernel thành công `40315390286`; không cần build lại kernel. Kiểm thử mock không thay thế thử native worker, boot, màn hình, sạc, thông báo và phép đo pin trên houji.
 
 ## Cài đặt
 
@@ -77,7 +109,7 @@ toán tự học hay bằng chứng preset cải thiện mọi workload; cần �
 
 Giữ nguyên HZ, WALT, CPU/GPU governor/xung, thermal, LMKD, PSI, watermark,
 swappiness, THP/MGLRU, bộ nén/kích thước ZRAM và driver vendor. AI chỉ có thể đề
-xuất bật/tắt preset hiện có qua bộ áp dụng kiểm tra; không tạo giá trị kernel mới.
+xuất mức trong allowlist 0.6.0 qua bộ áp dụng kiểm tra; không tự tạo giá trị mới.
 
 ## Đồng bộ cấu hình và bản kernel
 
@@ -201,7 +233,7 @@ Proxy riêng có thể chọn không xác thực, nhưng nên có token nếu pu
 
 Tham khảo: [OpenRouter: tham số và giá trị mặc định khi không gửi](https://openrouter.ai/docs/api_reference/parameters).
 
-## Áp dụng đề xuất AI (0.5.0)
+## Áp dụng đề xuất AI (0.6.0)
 
 - AI trả Markdown trong `answer` và danh sách `actions` qua **JSON Schema strict**:
   Chat Completions dùng `response_format.json_schema`, Responses dùng `text.format`.
@@ -212,12 +244,11 @@ Tham khảo: [OpenRouter: tham số và giá trị mặc định khi không gử
   thay đổi, không hạ xuống free text và không gọi lại API để sửa JSON.
 - Bảng **Các thay đổi được đề xuất** hiển thị ứng dụng/preset, giá trị trước/sau
   và lý do; bấm **Áp dụng đề xuất** để module kiểm tra lại rồi lưu cấu hình.
-  Ba hành động: profile ứng dụng (`automatic`, `daily`, `native-game`,
-  `windows-game`, `linux`), bật/tắt preset và `kernel_control` bật/tắt riêng
-  `swap_readahead`, `tcp_congestion`, `data_fsync`. Giá trị bật vẫn cố định là
-  page-cluster 0, BBR, min_fsync_blocks 20; tắt khôi phục giá trị gốc được lưu,
-  không giả định giá trị stock. AI nhận giá trị hiện tại/target/hỗ trợ để chọn
-  từng mục. Không có benchmark chứng minh cả ba luôn phù hợp cho mọi workload.
+  Hỗ trợ profile ứng dụng (`automatic`, `daily`, `native-game`, `windows-game`,
+  `linux`), công tắc preset, `kernel_control` boolean tương thích và `kernel_level`
+  chọn mức trong allowlist 0.6.0. Tắt/Gốc khôi phục giá trị được lưu, không đoán stock.
+  AI nhận giá trị hiện tại, mức đã chọn và các mức hỗ trợ; không có benchmark
+  chứng minh cùng một mức luôn phù hợp cho mọi workload.
   Không nhận shell, đường dẫn, giá trị sysctl, quyền, bảo vệ thông báo hoặc API key
   từ AI. `automatic` bỏ quy tắc riêng; Windows/Linux vẫn chỉ theo dõi tích hợp.
 - **Thói quen → Tự áp dụng đề xuất hợp lệ sau mỗi lượt AI chạy theo lịch** mặc
@@ -387,7 +418,7 @@ binary thuần Go CGO=0 dù cross-compile thành công. Không build bằng `net
 Go runtime được link vào binary; license BSD kèm ZIP. Không có dependency Go
 bên thứ ba hoặc HTTP server chạy nền.
 
-Đầu ra `dist/HNHouji-Experience-0.5.0-preview.zip`, checksum và manifest; không
+Đầu ra `dist/HNHouji-Experience-0.6.0-preview.zip`, checksum và manifest; không
 đưa source test, node_modules, model, key hay state vào ZIP. Build metadata nằm
 trong manifest. Build riêng tạo ZIP generic; khi được workflow kernel gọi,
 tạo ZIP có hậu tố bản kernel/hash và metadata nhúng. Workflow module không tự

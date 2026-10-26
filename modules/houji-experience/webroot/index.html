@@ -14,7 +14,7 @@
     <header class="masthead">
       <div class="brand-mark" aria-hidden="true">h<span>。</span></div>
       <div><p class="eyebrow">HNHOUJI / XIAOMI 14</p><h1>Experience</h1></div>
-      <span class="version">PREVIEW<br>0.5.0</span>
+      <span class="version">PREVIEW<br>0.6.0</span>
     </header>
     <div id="bridge-warning" class="notice" hidden>Mở WebUI từ KernelSU Manager để kết nối thiết bị. Nếu Manager không hỗ trợ bridge, dùng CLI houjictl. Trang này không dùng dữ liệu mô phỏng.</div>
     <div id="notification" class="notice" role="status" aria-live="polite" hidden></div>
@@ -40,6 +40,8 @@
           <article class="metric"><span>Nhiệt độ pin</span><strong id="temperature-value">—</strong><small>Không phải nhiệt độ SoC</small></article>
           <article class="metric"><span>Dung lượng pin</span><strong id="battery-value">—</strong><small>Một mẫu chưa đủ đo pin chờ</small></article>
         </div>
+        <article class="card"><h3>Pin · dữ liệu thực</h3><p>Thông tin đọc từ thiết bị, không thực hiện calibration. Dòng pin không phải dòng định mức charger.</p><pre id="battery-check">Chưa tải thông tin pin.</pre><h4>Khoảng screen-off do watcher quan sát</h4><pre id="battery-observation">Chưa đủ mẫu.</pre><h4>Thống kê Android riêng</h4><pre id="battery-android" role="status" aria-live="polite">Chưa tải thống kê.</pre><button id="battery-refresh" class="outline">Cập nhật thống kê pin</button><p class="footnote">Hai nguồn có mốc và độ phủ khác nhau; screen-off không đồng nghĩa deep sleep. Không suy ra mức tiết kiệm pin từ một mẫu.</p></article>
+        <label for="control-search">Tìm điều khiển kernel và Android</label><input id="control-search" type="search" placeholder="Nhập tên điều khiển">
         <article class="card"><div class="section-title"><span class="step">01</span><h3>Kernel · Hằng ngày</h3></div><p id="kernel-sync">Đang xác minh cấu hình và bản build kernel…</p><label class="check"><input id="kernel-tuning" type="checkbox"> Tự động áp dụng preset kernel Hằng ngày</label><div id="kernel-knobs" class="app-list"></div><p class="footnote">Áp dụng khi tự động đang bật và kernel khớp metadata. Bỏ qua mục không hỗ trợ; lưu giá trị gốc trước khi ghi. Hiệu quả cần đo trên máy.</p><div class="button-row"><button class="outline" data-open="apps">Quy tắc ứng dụng →</button><button class="text-button" data-open="ai">Cấu hình AI sau</button></div></article>
         <article class="card"><div class="section-title"><span class="step">02</span><h3>Nhận xét từ dữ liệu hiện tại</h3></div><ul id="local-advice" class="advice"><li>Chưa có dữ liệu thiết bị.</li></ul><p class="footnote">Giữ nguyên HZ, WALT, thermal, kích thước/bộ nén ZRAM và driver vendor.</p></article>
       </section>
@@ -55,7 +57,7 @@
           <p>Quy tắc bạn đặt cho ứng dụng được ưu tiên. Game Android chỉ được chọn sau ít nhất 2 ngày quan sát, 30 phút dùng, 3 phiên và 10 phút trong khung giờ hiện tại; kiểm tra hỗ trợ performance và dữ liệu tài nguyên mới. Khi có áp lực đã đo được, trở về Hằng ngày. Đây là quy tắc thử nghiệm cần đối chiếu trên máy.</p>
           <label class="check"><input id="learning-daily" type="checkbox"> Cho phép gửi thống kê tổng hợp tới AI mỗi ngày</label>
           <label class="check"><input id="learning-auto-apply" type="checkbox"> Tự áp dụng đề xuất hợp lệ sau mỗi lượt AI chạy theo lịch</label>
-          <p class="footnote">Mặc định tắt. Đổi profile ứng dụng, bật/tắt preset hoặc từng tinh chỉnh kernel có sẵn. Cần ít nhất 2 ngày có mẫu, 30 mẫu và 30 phút quan sát. Không ghi đè quy tắc ứng dụng bạn tự đặt. Tắt tùy chọn dừng các lần áp dụng sau; dùng Hoàn tác để trả lại lượt gần nhất.</p>
+          <p class="footnote">Mặc định tắt. Đổi profile ứng dụng, chọn các mức kernel cho phép. AI có thể đổi mức đặt tay trên các mục đang bật; không tự bật lại mục đã tắt. Cần ít nhất 2 ngày có mẫu, 30 mẫu và 30 phút quan sát. Không ghi đè quy tắc ứng dụng bạn tự đặt. Tắt tùy chọn dừng các lần áp dụng sau; dùng Hoàn tác để trả lại lượt gần nhất.</p>
           <div class="form-grid"><div><label for="learning-hour">Giờ bắt đầu phân tích (0–23)</label><input id="learning-hour" type="number" min="0" max="23" value="21" required></div><div><label for="learning-zone">Múi giờ</label><input id="learning-zone" type="text" value="Asia/Ho_Chi_Minh" maxlength="100" required></div></div>
           <label class="check"><input id="learning-charging" type="checkbox"> Chỉ phân tích tự động khi đang sạc hoặc đầy pin</label>
           <p class="footnote">Lịch AI mặc định tắt. Khi bật: tối đa một lần thử tự động mỗi ngày sau giờ chọn, cần AI được cấu hình và module đang bật. Có thể phát sinh phí; lỗi mạng không tự thử lại. Nếu chưa bật tự áp dụng, dùng nút Áp dụng đề xuất sau khi xem bảng thay đổi.</p>
@@ -93,6 +95,8 @@
       </section>
       <section id="tools" role="tabpanel" aria-labelledby="tab-tools" hidden>
         <div class="page-heading"><p class="eyebrow">CHƠI GAME &amp; LÀM VIỆC</p><h2>Mở rộng trải nghiệm</h2><p>Thiết lập riêng trong từng ứng dụng. Module không tự cài APK, đổi thư viện GPU hoặc chạy container.</p></div>
+        <article class="card"><h3>Android · bạn điều khiển, AI chỉ đọc</h3><p>Giữ OEM mặc định. Mục chưa xác minh sẽ không cung cấp mức ghi. Scanning/vị trí có thể ảnh hưởng dịch vụ nền; thay đổi tần số quét cần kiểm chứng trên máy.</p><button id="system-refresh" class="outline">Cập nhật khả năng Android</button><div id="system-controls"></div><label class="check"><input id="boot-notify" type="checkbox"> Thông báo khi watcher khởi động</label></article>
+        <article class="card"><h3>Preset và cấu hình</h3><p>Mỗi thay đổi cần xem trước. Backup chứa quy tắc ứng dụng, không có API key, kết quả AI hay journal. Khôi phục giữ quyền gọi AI/tự áp dụng hiện tại.</p><div class="button-row"><button class="outline" data-preset="stock">Xem preset Giữ gốc</button><button class="outline" data-preset="kernel">Xem preset Kernel hiện có</button><button class="outline" data-preset="custom">Xem preset Cá nhân</button><button class="outline" data-preset="save_custom">Lưu preset Cá nhân</button></div><pre id="settings-preview">Chưa có bản xem trước.</pre><button id="settings-apply" class="primary" disabled>Áp dụng cấu hình đã xem</button><div class="button-row"><button id="settings-backup" class="outline">Xuất backup cấu hình</button><label>Nhập backup JSON<input id="settings-import" type="file" accept="application/json,.json"></label></div></article>
         <div class="tool-grid">
           <article class="card"><span class="tool-icon">↗</span><h3>Winlator &amp; đồ họa</h3><p>Thử bộ Turnip/Box64 đi kèm Winlator 11.2. DXVK 3.x cần driver đủ tính năng Vulkan; giữ bộ cũ để đối chiếu.</p><button class="outline" data-guide="winlator">Nguồn &amp; hướng dẫn ↗</button></article>
           <article class="card"><span class="tool-icon">⇄</span><h3>KDE Connect</h3><p>Kết nối PC, chia sẻ file và thông báo. Quyền clipboard/thông báo phụ thuộc Android.</p><button class="outline" data-guide="kde">Mở hướng dẫn ↗</button></article>

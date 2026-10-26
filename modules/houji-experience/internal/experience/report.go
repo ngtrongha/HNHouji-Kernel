@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -51,7 +52,9 @@ func (a *App) Report(ctx context.Context) map[string]any {
 			if len(f) > 1 && (f[0] == "some" || f[0] == "full") {
 				for _, x := range f[1:] {
 					if k, v, ok := strings.Cut(x, "="); ok && k == "avg10" {
-						metrics["psi_"+f[0]+"_avg10"] = number(v)
+						if value, err := strconv.ParseFloat(v, 64); err == nil && !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 0 && value <= 100 {
+							metrics["psi_"+f[0]+"_avg10"] = value
+						}
 					}
 				}
 			}
@@ -79,7 +82,9 @@ func (a *App) Report(ctx context.Context) map[string]any {
 	for _, line := range strings.Split(thermal, "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "Thermal Status:") {
-			metrics["thermal_status"] = number(strings.TrimPrefix(line, "Thermal Status:"))
+			if value, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(line, "Thermal Status:"))); err == nil && value >= 0 && value <= 6 {
+				metrics["thermal_status"] = float64(value)
+			}
 		}
 	}
 	advice := []string{}
@@ -96,7 +101,7 @@ func (a *App) Report(ctx context.Context) map[string]any {
 		advice = append(advice, "Chưa có dấu hiệu vượt ngưỡng trong mẫu hiện tại. Một mẫu chưa đủ kết luận hiệu năng hoặc pin chờ.")
 	}
 	advice = append(advice, "Pin chờ và cải thiện hiệu năng cần phép đo lặp; báo cáo này không ước lượng mức tiết kiệm pin.")
-	return map[string]any{"source": "local-rules", "metrics": metrics, "advice": advice, "ntsync": exists(a.system("/dev/ntsync")), "legacy_conflict": exists(a.Paths.Legacy)}
+	return map[string]any{"source": "local-rules", "metrics": metrics, "battery": a.batteryCheck(), "battery_snapshot": a.batterySnapshotView(), "battery_observation": a.batteryObservation(), "advice": advice, "ntsync": exists(a.system("/dev/ntsync")), "legacy_conflict": exists(a.Paths.Legacy)}
 }
 
 func (a *App) Status(ctx context.Context) map[string]any {
@@ -172,6 +177,10 @@ func (a *App) Export(ctx context.Context) (string, error) {
 	}
 	sync := a.KernelSync(ctx)
 	data := map[string]any{"version": Version, "report": a.Report(ctx), "kernel_sync": sync, "kernel_tuning": a.kernelTuningStatus(ctx, c, sync, j), "pending_restore_count": len(j.Entries)}
+	return a.exportPublicJSON(data, "HNHouji-report")
+}
+
+func (a *App) exportPublicJSON(data any, prefix string) (string, error) {
 	b, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return "", err
@@ -192,7 +201,7 @@ func (a *App) Export(ctx context.Context) (string, error) {
 	if _, err = rand.Read(suffix); err != nil {
 		return "", err
 	}
-	name := fmt.Sprintf("HNHouji-report-%s-%x.json", time.Now().UTC().Format("20060102-150405"), suffix)
+	name := fmt.Sprintf("%s-%s-%x.json", prefix, time.Now().UTC().Format("20060102-150405"), suffix)
 	path := filepath.Join(dir, name)
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0664)
 	if err != nil {

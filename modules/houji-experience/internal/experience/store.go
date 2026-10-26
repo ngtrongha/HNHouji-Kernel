@@ -14,7 +14,7 @@ import (
 )
 
 const ModuleID = "houji_experience"
-const Version = "0.5.0-preview"
+const Version = "0.6.0-preview"
 
 type Config struct {
 	DefaultsVersion int               `json:"defaults_version"`
@@ -23,6 +23,9 @@ type Config struct {
 	Enabled         bool              `json:"enabled"`
 	KernelTuning    bool              `json:"kernel_tuning"`
 	KernelControls  map[string]bool   `json:"kernel_controls,omitempty"`
+	KernelLevels    map[string]string `json:"kernel_levels,omitempty"`
+	SystemSettings  map[string]string `json:"system_settings,omitempty"`
+	BootNotify      bool              `json:"boot_notify"`
 	Apps            map[string]string `json:"apps"`
 	AIProfiles      map[string]string `json:"ai_profiles,omitempty"`
 	Protected       map[string]bool   `json:"protected"`
@@ -31,7 +34,7 @@ type Config struct {
 }
 
 func defaultConfig() Config {
-	return Config{Version: 1, DefaultsVersion: 1, Enabled: true, KernelTuning: true, Apps: map[string]string{}, Protected: map[string]bool{}}
+	return Config{Version: 2, DefaultsVersion: 1, Enabled: true, KernelTuning: true, Apps: map[string]string{}, Protected: map[string]bool{}}
 }
 
 func disabledConfig() Config { c := defaultConfig(); c.Enabled = false; return c }
@@ -125,7 +128,11 @@ func (a *App) config() (Config, error) {
 	if c.Protected == nil {
 		c.Protected = map[string]bool{}
 	}
-	if err == nil && c.Version != 1 {
+	if c.Version == 1 {
+		c.Version = 2
+		c.Generation++
+	}
+	if err == nil && c.Version != 2 {
 		err = errors.New("unsupported configuration version")
 	}
 	for id := range c.KernelControls {
@@ -133,7 +140,40 @@ func (a *App) config() (Config, error) {
 			return c, errors.New("unknown kernel control")
 		}
 	}
+	for id, level := range c.KernelLevels {
+		if !validKernelLevel(id, level) {
+			return c, errors.New("unknown kernel level")
+		}
+	}
+	for id, choice := range c.SystemSettings {
+		if !validSystemChoice(id, choice) {
+			return c, errors.New("unknown system choice")
+		}
+	}
 	return c, err
+}
+
+func (a *App) migrateConfiguration() error {
+	u, err := a.lock("state")
+	if err != nil {
+		return err
+	}
+	defer u()
+	var old Config
+	if err = readJSON(a.state("config.json"), &old); os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if old.Version != 1 {
+		return nil
+	}
+	c, err := a.config()
+	if err != nil {
+		return err
+	}
+	return atomicJSON(a.state("config.json"), c)
 }
 
 func (a *App) journal() (Journal, error) {

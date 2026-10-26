@@ -81,14 +81,17 @@ type AppHabit struct {
 	GameChecked   bool      `json:"game_checked"`
 }
 type UsageDay struct {
-	Timezone        string                   `json:"timezone"`
-	Observed        int64                    `json:"observed_seconds"`
-	Active          int64                    `json:"active_seconds"`
-	ChargingSamples int64                    `json:"charging_samples"`
-	Samples         int64                    `json:"samples"`
-	Hours           [24]HourSummary          `json:"hours"`
-	Metrics         map[string]MetricSummary `json:"metrics"`
-	Apps            map[string]*AppHabit     `json:"apps"`
+	BatteryOffSeconds int64                    `json:"battery_off_seconds"`
+	BatteryOffDrop    float64                  `json:"battery_off_drop_percent"`
+	BatteryIntervals  int64                    `json:"battery_intervals"`
+	Timezone          string                   `json:"timezone"`
+	Observed          int64                    `json:"observed_seconds"`
+	Active            int64                    `json:"active_seconds"`
+	ChargingSamples   int64                    `json:"charging_samples"`
+	Samples           int64                    `json:"samples"`
+	Hours             [24]HourSummary          `json:"hours"`
+	Metrics           map[string]MetricSummary `json:"metrics"`
+	Apps              map[string]*AppHabit     `json:"apps"`
 }
 type UsageHistory struct {
 	Version int                  `json:"version"`
@@ -96,6 +99,9 @@ type UsageHistory struct {
 	Days    map[string]*UsageDay `json:"days"`
 }
 type Learner struct {
+	BatteryAt                                           time.Time
+	BatteryLevel                                        float64
+	BatteryEligible                                     bool
 	History                                             UsageHistory
 	Config                                              LearningConfig
 	LastAt, SampleAt, FlushAt, SessionAt, PressureUntil time.Time
@@ -121,6 +127,9 @@ func (a *App) usageHistory() (UsageHistory, error) {
 		h.Days = map[string]*UsageDay{}
 	}
 	for key, day := range h.Days {
+		if day != nil && (day.BatteryOffSeconds < 0 || day.BatteryOffSeconds > day.Observed || day.BatteryOffDrop < 0 || day.BatteryOffDrop > 10000 || math.IsNaN(day.BatteryOffDrop) || math.IsInf(day.BatteryOffDrop, 0) || day.BatteryIntervals < 0 || day.BatteryIntervals > day.Samples) {
+			return h, errors.New("invalid battery observation")
+		}
 		if _, e := time.Parse("2006-01-02", key); e != nil || day == nil || len(day.Apps) > 32 || len(day.Metrics) > 20 {
 			return h, errors.New("invalid learning day")
 		}
@@ -277,6 +286,9 @@ func (a *App) Observe(ctx context.Context, pkg string, asleep bool, at time.Time
 		a.learner = &Learner{History: h, Config: c, Intensity: "unknown"}
 	}
 	l := a.learner
+	if !asleep {
+		l.BatteryEligible = false
+	}
 	location, _ := time.LoadLocation(c.Timezone)
 	at = at.In(location)
 	if !validPackage(pkg) || asleep {
@@ -376,6 +388,17 @@ func (a *App) Observe(ctx context.Context, pkg string, asleep bool, at time.Time
 			}
 		}
 		charging := a.readSystem("/sys/class/power_supply/battery/status")
+		level, levelOK := metrics["battery_percent"].(float64)
+		eligible := asleep && charging == "Discharging" && levelOK && level >= 0 && level <= 100
+		delta := at.Sub(l.BatteryAt)
+		if eligible && l.BatteryEligible && !l.BatteryAt.IsZero() && delta > 0 && delta <= 90*time.Second && at.Format("2006-01-02") == l.BatteryAt.In(location).Format("2006-01-02") && level <= l.BatteryLevel {
+			day.BatteryOffSeconds += int64(delta / time.Second)
+			day.BatteryOffDrop += l.BatteryLevel - level
+			day.BatteryIntervals++
+		}
+		l.BatteryAt = at
+		l.BatteryEligible = eligible
+		l.BatteryLevel = level
 		if charging == "Charging" || charging == "Full" {
 			day.ChargingSamples++
 		}

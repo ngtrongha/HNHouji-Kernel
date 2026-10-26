@@ -14,7 +14,13 @@ func processAlive(pid int) bool {
 }
 
 func startDetached(path, id string) error {
-	cmd := exec.Command(path, "ai-worker", id)
+	return startDetachedCommand(path, "ai-worker", id)
+}
+func startDetachedCommand(path, command, id string) error {
+	if command != "ai-worker" && command != "battery-worker" {
+		return errors.New("unknown worker")
+	}
+	cmd := exec.Command(path, command, id)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
 		return err

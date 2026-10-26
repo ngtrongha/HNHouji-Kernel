@@ -6,19 +6,33 @@ const url = pathToFileURL(resolve('webroot/index.html')).href;
 async function mockBridge(page) {
   await page.addInitScript(() => {
     window.requests = [];
-    const config = { enabled: true, kernel_tuning:true, default_profile:'daily', apps: {}, protected: {} };
+    const config = { enabled: true, kernel_tuning:true, kernel_controls:{},kernel_levels:{swap_readahead:'0',tcp_congestion:'bbr',data_fsync:'20'},system_settings:{},boot_notify:false, default_profile:'daily', apps: {}, protected: {} };
     let ai = { configured: false, enabled: false };
     let learning = {enabled:true,adaptive:true,daily_ai:false,hour:21,timezone:'Asia/Ho_Chi_Minh',charging_only:false};
     let job={state:'idle'};
     let application={};
+    let daily={};let settingsPlan={};let custom={};
     const report = { source: 'local-rules', metrics: { MemTotal_kib: 8000000, MemAvailable_kib: 3000000, zram_original_bytes: 1200000000, zram_allocated_bytes: 480000000, battery_percent: 80, battery_celsius: 35 }, advice: ['Một mẫu chưa đủ kết luận pin chờ.'], ntsync: false, legacy_conflict: false };
     window.ksu = { exec(command, options, callback) {
       const encoded = JSON.parse(options).env.HOUJI_REQUEST_B64;
       const req = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(encoded), c => c.charCodeAt(0))));
-      window.requests.push({ command, req });
+      const record={command,req};window.requests.push(record);
       if(req.action==='export'&&window.exportFailure){setTimeout(()=>window[callback](1,JSON.stringify({ok:false,error:'cannot access Downloads/HNHouji; unlock shared storage and try again'}),''),0);return;}
       let data = {};
       switch (req.action) {
+        case 'battery_check': data={source:'power_supply/battery',status:'Discharging',capacity:80,cycle_count:120};break;
+        case 'battery_snapshot_start': case 'battery_snapshot_status': data={id:'battery-01',state:window.batteryError?'failed':'completed',error:window.batteryError,result:{source:'android-checkin-since-stats-start',anchor:'1:123456789',screen_off_seconds:3600,screen_off_drop_percent:2,percent_per_hour:2}};break;
+        case 'kernel_level_set': config.kernel_levels[req.control]=req.level;break;
+        case 'kernel_control_set': config.kernel_controls[req.control]=req.enabled;break;
+        case 'system_settings_status': data=[{id:'blur',label:'Blur giao diện',choice:config.system_settings.blur || 'stock',choices:['stock','off'],state:config.system_settings.blur==='off'?'applied':'available',current:[config.system_settings.blur==='off'?'1':'0']},{id:'peak_refresh',label:'Giới hạn tần số quét',choice:config.system_settings.peak_refresh || 'stock',choices:['stock','60','120'],state:'available',current:['120']}];break;
+        case 'system_setting_set': config.system_settings[req.id]=req.choice;break;
+        case 'boot_notify_set': config.boot_notify=req.enabled;break;
+        case 'settings_backup_export': data={path:'/storage/emulated/0/Download/HNHouji/HNHouji-settings-test.json'};break;
+        case 'settings_preview':
+          if(req.mode==='save_custom'){custom=JSON.parse(JSON.stringify(config));data={saved:true};break;}
+          settingsPlan=req.mode==='import'?req.backup.settings:req.mode==='custom'?custom:{...config,kernel_tuning:req.mode==='kernel'};
+          data={token:'settings-01',before:config,after:settingsPlan,learning,skipped:[]};break;
+        case 'settings_apply': Object.assign(config,settingsPlan);data=config;break;
         case 'ai_job_start': {
           let result=req.mode==='test'?{source:'api',answer:'Kết nối hoạt động.',usage:{},elapsed_ms:12}:window.truncatedAI?{source:'local-rules',ai_error:'response-truncated',report,usage:{completion_tokens:512},elapsed_ms:20,finish_reason:'length',model:'routed-model'}:ai.enabled?{source:'api',answer:'## Nhận định\n**Bằng chứng** đủ đọc.\n- <img src=x onerror="window.pwned=true"> $(reboot)\n\n| Chọn | Kiểm tra |\n| --- | --- |\n| daily | đo lặp |',usage:{total_tokens:50},finish_reason:'stop',model:'actual-model',elapsed_ms:15}:{source:'local-rules',ai_error:'not-configured',report};
           if(window.bodyError&&req.mode==='ask')result={source:'local-rules',ai_error:window.bodyError,report};
@@ -28,16 +42,16 @@ async function mockBridge(page) {
           if(window.schemaRejected&&req.mode==='ask')result={source:'local-rules',ai_error:'http-400',structured_output_hint:true,report};
           job={id:'job-'+window.requests.length,mode:req.mode,state:'queued',started:new Date().toISOString(),result};data={...job,result:undefined};break;
         }
-        case 'ai_job_status': if(job.state==='queued'||job.state==='running')job.state=window.holdAI?'running':'completed';data=job;break;
+        case 'ai_job_status': if(job.state==='queued'||job.state==='running')job.state=window.holdAI?'running':'completed';if(job.state==='completed'&&job.mode==='daily')daily=job.result;data=job;break;
         case 'ai_job_cancel': job.state='cancelled';data=job;break;
         case 'ai_application_status': data=application;break;
         case 'ai_proposal_apply': if(!window.controlProposal)config.apps['com.example.game']='daily';application={proposal_id:req.proposal_id,status:'applied',automatic:false,at:'2026-10-25T13:00:00Z',changes:window.controlProposal?[{kind:'kernel_control',control:'tcp_congestion'}]:[{kind:'app_profile'}]};data=application;break;
         case 'ai_application_undo': delete config.apps['com.example.game'];application={...application,status:'undone'};data=application;break;
-        case 'learning_status': data={config:learning,history:{days:{'2026-10-25':{observed_seconds:600,active_seconds:300,samples:10,hours:Array.from({length:24},(_,h)=>({active_seconds:h===20?300:0}))}},through:'2026-10-25T13:00:00Z'},apps:[{id:'app-01',package:'com.example.game',seconds:300,days:1,sessions:2}],daily:{}};break;
+        case 'learning_status': data={config:learning,history:{days:{'2026-10-25':{observed_seconds:600,active_seconds:300,samples:10,hours:Array.from({length:24},(_,h)=>({active_seconds:h===20?300:0}))}},through:'2026-10-25T13:00:00Z'},apps:[{id:'app-01',package:'com.example.game',seconds:300,days:1,sessions:2}],daily};break;
         case 'learning_preview': data={apps:[{id:'app-01',seconds:300}],observed_seconds:600};break;
         case 'learning_save': learning=req.learning;break;
         case 'learning_analyze': data={at:'2026-10-25T13:00:00Z',legend:[{id:'app-01',package:'com.example.game'}],result:{source:'api',answer:'app-01: <img src=x onerror="window.pwned=true"> xem xét daily',usage:{total_tokens:100},finish_reason:'stop',model:'actual-model',elapsed_ms:20}};break;
-        case 'status': data = { runtime: { profile: window.kernelMismatch?'observe':config.enabled?'daily':'observe', reason: window.kernelMismatch?'kernel-build-mismatch':config.enabled?'daily-default':'disabled' }, kernel_sync:{ready:!window.kernelMismatch,message:window.kernelMismatch?'Build ID không khớp; chỉ chẩn đoán.':'Release, IKCONFIG và build ID khớp.'}, kernel_tuning:{knobs:[{label:'ZRAM: đọc từng trang swap',current:config.kernel_tuning?'0':'3',target:'0',before:'3',state:window.kernelMismatch?'waiting':config.kernel_tuning?'applied':'waiting',detail:'Chỉ dùng với ZRAM.'}]}, watcher_running: true, config, report, ai }; break;
+        case 'status': data = { runtime: { profile: window.kernelMismatch?'observe':config.enabled?'daily':'observe', reason: window.kernelMismatch?'kernel-build-mismatch':config.enabled?'daily-default':'disabled' }, kernel_sync:{ready:!window.kernelMismatch,message:window.kernelMismatch?'Build ID không khớp; chỉ chẩn đoán.':'Release, IKCONFIG và build ID khớp.'}, kernel_tuning:{knobs:[{control:'swap_readahead',enabled:config.kernel_controls.swap_readahead!==false,level:config.kernel_levels.swap_readahead,levels:['stock','0','1','2','3'],label:'ZRAM: đọc từng trang swap',current:config.kernel_tuning&&config.kernel_levels.swap_readahead!=='stock'?config.kernel_levels.swap_readahead:'3',target:config.kernel_levels.swap_readahead,before:'3',state:window.kernelMismatch?'waiting':config.kernel_tuning?'applied':'waiting',detail:'Chỉ dùng với ZRAM.'}]}, watcher_running: true, config, report, ai }; break;
         case 'kernel_tuning_set': config.kernel_tuning=req.enabled; break;
         case 'packages': data = ['com.example.chat', 'com.example.game']; break;
         case 'ai_status': data = ai; break;
@@ -54,7 +68,9 @@ async function mockBridge(page) {
         case 'doctor': data = { checks: { compatibility: 'supported' } }; break;
         case 'export': data = { path: '/storage/emulated/0/Download/HNHouji/HNHouji-report-20261024-130000-abcdef123456.json' }; break;
       }
-      setTimeout(() => window[callback](0, JSON.stringify({ ok: true, data }), ''), 0);
+      const answer=()=>{window[callback](0,JSON.stringify({ok:true,data}),'');record.completed=true;};
+      if(req.action==='learning_preview'&&window.holdLearningPreview){window.releaseLearningPreview=()=>{window.holdLearningPreview=false;answer();};return;}
+      setTimeout(answer, 0);
     } };
   });
 }
@@ -64,6 +80,47 @@ test('works without native bridge and never invents metrics', async ({ page }) =
   await expect(page.locator('#bridge-warning')).toBeVisible();
   await expect(page.locator('#ram-value')).toHaveText('—');
   await expect(page.locator('#profile-name')).toHaveText('Chưa kết nối');
+});
+
+test('kernel levels and Android settings use separate closed requests',async({page})=>{
+  await mockBridge(page);await page.goto(url);
+  await page.getByLabel('Mức ZRAM: đọc từng trang swap',{exact:true}).selectOption('1');
+  await expect.poll(()=>page.evaluate(()=>window.requests.some(x=>x.req.action==='kernel_level_set'&&x.req.control==='swap_readahead'&&x.req.level==='1'))).toBeTruthy();
+  await page.getByLabel('Bật ZRAM: đọc từng trang swap',{exact:true}).uncheck();
+  await expect.poll(()=>page.evaluate(()=>window.requests.some(x=>x.req.action==='kernel_control_set'&&x.req.enabled===false))).toBeTruthy();
+  await page.getByRole('tab',{name:'Tiện ích',exact:true}).click();
+  await page.getByLabel('Blur giao diện',{exact:true}).selectOption('off');
+  await expect.poll(()=>page.evaluate(()=>window.requests.some(x=>x.req.action==='system_setting_set'&&x.req.id==='blur'&&x.req.choice==='off'))).toBeTruthy();
+  expect(await page.getByLabel('Giới hạn tần số quét',{exact:true}).locator('option').allTextContents()).not.toContain('90');
+  expect(await page.evaluate(()=>window.requests.some(x=>x.req.action==='ai_job_start'))).toBeFalsy();
+});
+
+test('settings presets require preview and backup uses shared Downloads',async({page})=>{
+  await mockBridge(page);await page.goto(url);await page.getByRole('tab',{name:'Tiện ích',exact:true}).click();
+  await expect(page.locator('#settings-apply')).toBeDisabled();
+  await page.getByRole('button',{name:'Xem preset Giữ gốc',exact:true}).click();
+  await expect(page.locator('#settings-preview')).toContainText('settings-01');
+  expect(await page.evaluate(()=>window.requests.some(x=>x.req.action==='settings_apply'))).toBeFalsy();
+  await page.locator('#settings-apply').click();await expect(page.locator('#settings-apply')).toBeDisabled();
+  expect(await page.evaluate(()=>window.requests.find(x=>x.req.action==='settings_apply').req)).toEqual({action:'settings_apply',token:'settings-01'});
+  await page.locator('#settings-backup').click();await expect(page.locator('#notification')).toContainText('/Download/HNHouji/HNHouji-settings-test.json');
+});
+
+test('battery errors stop and stale learning snapshots cannot erase completed AI',async({page})=>{
+  await mockBridge(page);await page.goto(url);await page.evaluate(()=>{window.batteryError='battery-format-unsupported';});
+  await page.locator('#battery-refresh').click();await expect(page.locator('#battery-android')).toContainText('Chưa hỗ trợ định dạng');
+  await page.getByRole('tab',{name:'Thói quen',exact:true}).click();await expect(page.locator('#learning-coverage')).toContainText('10 mẫu');
+  await expect.poll(()=>page.evaluate(()=>window.requests.filter(x=>x.req.action==='ai_application_status').every(x=>x.completed))).toBeTruthy();
+  await page.evaluate(()=>{window.holdAI=true;});await page.locator('#learning-analyze').click();
+  await expect.poll(()=>page.evaluate(()=>window.requests.some(x=>x.req.action==='ai_job_start'&&x.req.mode==='daily'))).toBeTruthy();
+  await page.evaluate(()=>{window.holdLearningPreview=true;});await page.getByRole('tab',{name:'Thói quen',exact:true}).click();
+  await expect.poll(()=>page.evaluate(()=>typeof window.releaseLearningPreview==='function')).toBeTruthy();
+  await page.evaluate(()=>{window.holdAI=false;});await expect(page.locator('#learning-answer')).toContainText('xem xét daily');
+  await expect.poll(()=>page.evaluate(()=>window.requests.filter(x=>x.req.action==='ai_application_status').every(x=>x.completed))).toBeTruthy();
+  const before=await page.evaluate(()=>window.requests.filter(x=>x.req.action==='ai_application_status'&&x.completed).length);
+  await page.evaluate(()=>window.releaseLearningPreview());
+  await expect.poll(()=>page.evaluate(()=>window.requests.filter(x=>x.req.action==='ai_application_status'&&x.completed).length)).toBeGreaterThan(before);
+  await expect(page.locator('#learning-answer')).toContainText('xem xét daily');
 });
 
 test('habits opt in to scheduling, show coverage and keep AI suggestions for review', async ({page})=>{

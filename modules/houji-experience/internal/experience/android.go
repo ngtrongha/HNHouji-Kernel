@@ -155,6 +155,8 @@ func (a *App) foreground(ctx context.Context) (string, bool) {
 
 func (a *App) current(ctx context.Context, e Entry) (string, error) {
 	switch e.Kind {
+	case "system":
+		return a.currentSystem(ctx, e.Package)
 	case "kernel":
 		return a.readKernelKnob(e.Package)
 	case "game":
@@ -195,6 +197,8 @@ func (a *App) writeValue(ctx context.Context, e Entry, value string) error {
 	var out string
 	var err error
 	switch e.Kind {
+	case "system":
+		return a.writeSystem(ctx, e.Package, value)
 	case "kernel":
 		return a.writeKernelKnob(e.Package, value)
 	case "game":

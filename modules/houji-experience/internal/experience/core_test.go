@@ -65,6 +65,9 @@ func (f *fakeAndroid) Run(_ context.Context, name string, args ...string) (strin
 			return "Thermal Status: 0", nil
 		}
 	case "settings":
+		if args[2] == "list" {
+			return "", nil
+		}
 		if args[2] == "get" {
 			return f.millet, nil
 		}
