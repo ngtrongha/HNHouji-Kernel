@@ -39,10 +39,10 @@ def package(output: Path, kernel_manifest: Path | None = None, kernel_artifact: 
     files += sorted((ROOT / "licenses").glob("*"))
     files += [ROOT / "README.md"]
     output.mkdir(parents=True, exist_ok=True)
-    suffix = ""
+    suffix = "-generic"
     if kernel is not None:
         suffix = f"-for-{kernel_artifact.removesuffix('-AnyKernel3')}-{kernel['image_sha256'][:12]}"
-    target = output / f"HNHouji-Experience-0.6.1-preview{suffix}.zip"
+    target = output / f"HNHouji-Experience-0.6.2-preview{suffix}.zip"
     checksums = {}
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         payloads = [(path.relative_to(ROOT).as_posix(), path.read_bytes()) for path in files if path.is_file()]
@@ -52,6 +52,14 @@ def package(output: Path, kernel_manifest: Path | None = None, kernel_artifact: 
         if kernel is not None:
             payloads.append(("kernel.json", (json.dumps(kernel, indent=2) + "\n").encode("utf-8")))
         for name, data in payloads:
+            if name == "module.prop" and kernel is None:
+                lines = data.decode("utf-8").splitlines()
+                for index, line in enumerate(lines):
+                    if line.startswith("name="):
+                        lines[index] = line + " (generic)"
+                    elif line.startswith("description="):
+                        lines[index] = "description=Generic: requires matching installed kernel metadata or a paired module ZIP. " + line.removeprefix("description=")
+                data = ("\n".join(lines) + "\n").encode("utf-8")
             info = zipfile.ZipInfo(name, date_time=(2026, 10, 24, 0, 0, 0))
             info.create_system = 3
             mode = 0o755 if name.endswith(".sh") or name == "bin/houjictl" else 0o644

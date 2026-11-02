@@ -14,7 +14,7 @@ import (
 )
 
 const ModuleID = "houji_experience"
-const Version = "0.6.1-preview"
+const Version = "0.6.2-preview"
 
 type Config struct {
 	DefaultsVersion int               `json:"defaults_version"`

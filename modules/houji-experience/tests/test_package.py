@@ -22,6 +22,8 @@ class PackageTests(unittest.TestCase):
             path = pack.ROOT / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("fixture", encoding="utf-8")
+        self.module_prop = b"id=houji_experience\nname=HNHouji Experience\nversion=0.6.2-preview\nversionCode=602\ndescription=Preview.\n"
+        (pack.ROOT / "module.prop").write_bytes(self.module_prop)
         binary = pack.ROOT / "bin/houjictl"
         binary.parent.mkdir()
         header = bytearray(64)
@@ -33,17 +35,26 @@ class PackageTests(unittest.TestCase):
 
     def test_allowlist_permissions_checksum_and_reproducibility(self):
         target = pack.package(pack.ROOT / "dist")
+        self.assertEqual(target.name, "HNHouji-Experience-0.6.2-preview-generic.zip")
         first = target.read_bytes()
         with zipfile.ZipFile(target) as archive:
             self.assertNotIn("ai.json", archive.namelist())
             self.assertNotIn("bin/build-info.txt", archive.namelist())
             self.assertEqual((archive.getinfo("bin/houjictl").external_attr >> 16) & 0o777, 0o755)
             self.assertEqual((archive.getinfo("webroot/index.html").external_attr >> 16) & 0o777, 0o644)
+            props = dict(line.split("=", 1) for line in archive.read("module.prop").decode().splitlines())
+            self.assertEqual(props["name"], "HNHouji Experience (generic)")
+            self.assertIn("requires matching installed kernel metadata or a paired module ZIP", props["description"])
+            self.assertEqual(props["id"], "houji_experience")
+            self.assertEqual(props["versionCode"], "602")
         self.assertTrue(target.with_suffix(".zip.sha256").read_text().startswith(hashlib.sha256(first).hexdigest()))
         manifest = json.loads(target.with_suffix(".manifest.json").read_text())
         self.assertTrue(manifest["build"]["cgo"])
+        with zipfile.ZipFile(target) as archive:
+            self.assertEqual(manifest["files"], {name: hashlib.sha256(archive.read(name)).hexdigest() for name in archive.namelist()})
         pack.package(pack.ROOT / "dist")
         self.assertEqual(first, target.read_bytes())
+        self.assertEqual((pack.ROOT / "module.prop").read_bytes(), self.module_prop)
 
     def test_rejects_non_android_or_cgo_disabled_binary(self):
         (pack.ROOT / "bin/build-info.txt").write_text("CGO_ENABLED=0 GOOS=android GOARCH=arm64")
@@ -68,6 +79,7 @@ class PackageTests(unittest.TestCase):
         self.assertIn("for-6.1.177-android14-lts-KernelSU-Next", target.name)
         with zipfile.ZipFile(target) as archive:
             self.assertEqual(json.loads(archive.read("kernel.json")), kernel)
+            self.assertEqual(archive.read("module.prop"), self.module_prop)
             self.assertNotIn("Image", archive.namelist())
         info = json.loads(target.with_suffix(".manifest.json").read_text())
         self.assertEqual(info["kernel_artifact"], artifact)

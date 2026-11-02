@@ -300,3 +300,17 @@ Every time a CI build error or device runtime bug occurs, **you MUST add its sym
 - **Symptom**: The user selects `openrouter/free`; the connection test succeeds but analysis falls back with `http-404` and a definite JSON Schema rejection message.
 - **Root Cause**: The old connection test sends text only, while analysis requires strict JSON Schema/provider parameter support. All HTTP 400/404/422 responses receive a schema-rejection hint without inspecting error evidence. Additionally, OpenRouter requests use the generic `max_completion_tokens` alias even though many free model endpoints advertise `max_tokens` only; this may narrow strict parameter routing. The screenshot does not establish the actual server-side reason, and official OpenRouter docs support Structured Outputs on its free router.
 - **Prevention**: Probe the structured response contract without device evidence or actions, validate the completed JSON envelope and never create/apply a plan during the probe. Use OpenRouter's advertised Chat token parameter and preserve provider-default budgets. Parse only complete bounded JSON error bodies into closed diagnostic categories; never display/persist raw provider errors or infer schema failure from status alone. Keep schema enforcement, privacy settings and no-retry behavior. Test both protocols, unknown/routing/model/policy/schema errors, oversized/partial bodies, key privacy and successful text with invalid structured output. Device/account routing still requires a fresh response from the affected setup.
+
+---
+
+## Rule 34: Label Generic Modules and Require Pairing for Manual Distribution
+- **Symptom**: Report `HNHouji-report-20261102-153218-481ce61fafd7` has `paired:false`, `manifest-missing` and all kernel controls waiting, although the live build ID and full IKCONFIG hash match kernel run `40315390286`.
+- **Root Cause**: Neither embedded metadata nor an installed sidecar is available to the module. Generic push/PR/manual builds previously shared the normal module name and installation guidance, making them easy to confuse with paired builds. The report does not prove which ZIP was installed or why the sidecar is missing; runtime correctly refuses unverified tuning.
+- **Prevention**: Use `-generic` in generic ZIP names and label generic packages in Manager, installer and CI summary. Manual module dispatch requires a successful kernel run and exact artifact name; keep push/PR generic QA available. Package only CI-derived metadata after Image hash validation. Never synthesize metadata from a device report or weaken live identity checks; verify generic/paired payloads, checksums, reproducibility and source-file preservation. Device readiness still requires a fresh report after installing the paired module.
+
+---
+
+## Rule 35: Distinguish Matrix PR Permission Failures from Kernel Build Failures
+- **Symptom**: Scheduled Sync Kernel Matrix run `41451448896` fails at `Open or update sync PR` with `GitHub Actions is not permitted to create or approve pull requests`.
+- **Root Cause**: GitHub rejects the bot's PR creation under the repository Actions policy after the matrix branch is pushed. This run never compiles a kernel and is unrelated to a device's missing module metadata.
+- **Prevention**: Inspect the failing step before diagnosing kernel compatibility. Do not merge generated matrix changes, alter houji shields or broaden repository permissions to make the status green. Review matrix updates and repository policy separately from kernel/module builds.

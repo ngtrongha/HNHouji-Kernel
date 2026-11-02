@@ -15,15 +15,13 @@ on:
   workflow_dispatch:
     inputs:
       kernel_run_id:
-        description: 'Existing successful kernel run ID to package a paired module (blank = generic)'
+        description: 'Existing successful kernel run ID to package a paired module'
         type: string
-        required: false
-        default: ''
+        required: true
       kernel_artifact_name:
         description: 'Exact AnyKernel3 artifact in kernel_run_id (both inputs required for pairing)'
         type: string
-        required: false
-        default: ''
+        required: true
   pull_request:
     paths:
       - 'modules/houji-experience/**'
@@ -66,6 +64,16 @@ jobs:
       GOMAXPROCS: '2'
     steps:
       - uses: actions/checkout@v7
+      - name: Require a kernel artifact outside generic QA
+        env:
+          BUILD_EVENT: ${{ github.event_name }}
+          KERNEL_ARTIFACT: ${{ inputs.kernel_artifact_name }}
+        run: |
+          set -euo pipefail
+          case "$BUILD_EVENT" in
+            push|pull_request) ;;
+            *) [ -n "$KERNEL_ARTIFACT" ] || { echo 'Select the exact kernel artifact for a paired module'; exit 1; } ;;
+          esac
       - name: Download this kernel's build metadata
         if: (inputs.kernel_run_id == '' || inputs.kernel_run_id == null) && inputs.kernel_artifact_name != '' && inputs.kernel_artifact_name != null
         uses: actions/download-artifact@v7
@@ -82,9 +90,6 @@ jobs:
           KERNEL_DEST: ${{ runner.temp }}/houji-kernel-artifact
         run: |
           set -euo pipefail
-          if [ -z "$KERNEL_RUN_ID" ] && [ -z "$KERNEL_ARTIFACT" ]; then
-            exit 0
-          fi
           [[ "$KERNEL_RUN_ID" =~ ^[0-9]+$ ]] || { echo 'Invalid/missing kernel run ID'; exit 1; }
           [ -n "$KERNEL_ARTIFACT" ] || { echo 'Missing exact kernel artifact name'; exit 1; }
           [ "$(gh run view "$KERNEL_RUN_ID" --repo "$GH_REPO" --json conclusion --jq .conclusion)" = success ] || { echo 'Kernel run must have succeeded'; exit 1; }
@@ -149,14 +154,19 @@ jobs:
       - name: Show module installation download
         env:
           INSTALLABLE_URL: ${{ steps.installable.outputs.artifact-url }}
+          KERNEL_ARTIFACT: ${{ inputs.kernel_artifact_name }}
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
           ## Cài HNHouji Experience bằng KernelSU Next
           [Tải ZIP module để cài trực tiếp]($INSTALLABLE_URL)
 
-          Chọn file HNHouji-Experience-<version>-for-<kernel>-<hash>.zip trong KernelSU Next.
           Artifact build-files là gói chứa ZIP/checksum/manifest: phải giải nén trước, không chọn gói đó để flash.
           EOF
+          if [ -n "$KERNEL_ARTIFACT" ]; then
+            echo 'Bản paired có metadata nhúng: chọn ZIP -for-<kernel>-<hash>. Sau reboot, kiểm tra kernel_sync.ready=true.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Bản generic (-generic.zip) không có metadata nhúng. Cần sidecar kernel hợp lệ; nếu thiếu, module chỉ chẩn đoán. Để dùng thường ngày, chạy workflow thủ công với đúng kernel run/artifact.' >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Upload browser QA
         if: always()
         uses: actions/upload-artifact@v7

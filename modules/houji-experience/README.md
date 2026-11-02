@@ -1,4 +1,4 @@
-# HNHouji Experience 0.6.1-preview
+# HNHouji Experience 0.6.2-preview
 
 Module KernelSU độc lập cho Xiaomi 14 **houji**, arm64, GKI 6.1 và user 0.
 WebUI mở trong Manager; CLI là phương án dự phòng. Không cần metamodule,
@@ -7,6 +7,12 @@ defconfig, pin/driver và không đóng gói model AI.
 
 **Preview chưa được chứng nhận trên thiết bị.** Test máy phát triển và mock
 Android không thay thế thử nghiệm reboot, thông báo, game và pin chờ trên houji.
+
+## Sửa lỗi 0.6.2-preview
+
+- ZIP không ghép kernel có hậu tố `-generic` và nhãn generic trong Manager/installer. Nó vẫn cần sidecar hợp lệ; thiếu cả sidecar và metadata nhúng thì chỉ chẩn đoán, không áp dụng tinh chỉnh. Tên generic không có nghĩa là tương thích mọi kernel.
+- Build thủ công yêu cầu cả run kernel thành công và tên AnyKernel3 artifact chính xác. Push/PR vẫn kiểm thử bản generic, Summary ghi rõ loại gói. Bản paired giữ metadata từ artifact CI và kiểm tra build ID/IKCONFIG như trước; không tự tạo metadata từ báo cáo thiết bị.
+- Với báo cáo `HNHouji-report-20261102-153218-481ce61fafd7`, build ID và hash IKCONFIG khớp kernel run `40315390286`, artifact `6.1.177-android14-lts-KernelSU-Next-AnyKernel3`. Có thể cập nhật module paired mà không flash lại kernel. Sau reboot phải xác nhận `kernel_sync.ready=true` trên máy.
 
 ## Sửa lỗi 0.6.1-preview
 
@@ -52,7 +58,9 @@ AI thêm `{ "kind":"kernel_level", "control":"swap_readahead", "level":"1", "rea
 1. Dùng ZIP module `HNHouji-Experience-…-for-<kernel>-<hash>.zip` đi cùng đúng
    bản kernel trong cùng workflow build/release. Bản build module riêng vẫn có
    thể dùng để kiểm thử, không khóa vào một Image cụ thể.
-2. Cài ZIP trong KSU/KernelSU-Next Manager. Không flash bằng recovery/AnyKernel3.
+2. Cài ZIP paired trong KSU/KernelSU-Next Manager. Không flash bằng recovery/AnyKernel3.
+   ZIP `-generic.zip` từ push/PR không có metadata nhúng; nếu máy thiếu sidecar
+   kernel, hãy dùng bản paired thay vì bỏ kiểm tra nhận dạng.
    Trên GitHub Actions, chọn artifact tên đầy đủ `HNHouji-Experience-<version>-…zip`
    hoặc link **Tải ZIP module để cài trực tiếp** trong Summary. File này upload
    trực tiếp (`archive: false`), không có ZIP bọc ngoài. Với các lượt build cũ,
@@ -391,7 +399,8 @@ Theo lựa chọn của người dùng, build thực hiện trên GitHub Actions
 local và không cần chờ CI kết thúc. Workflow **Houji Experience** chạy kiểm thử
 và build Android/WebUI. Khi chạy thủ công, nhập cả `kernel_run_id` của lượt
 kernel đã thành công và `kernel_artifact_name` chính xác để đóng gói module
-khớp kernel đó. Để trống cả hai tạo bản generic. Quy trình vẫn kiểm tra Image
+khớp kernel đó. Cả hai trường là bắt buộc khi chạy thủ công; push/PR tạo bản
+generic để kiểm thử. Quy trình vẫn kiểm tra Image
 SHA-256 và metadata trước khi đóng gói. Các lệnh dưới đây là tham chiếu cho CI.
 
 Cần Go 1.27.3, Node 22+, pnpm 11.25.0, Python 3 và Android NDK r28b
@@ -425,7 +434,7 @@ binary thuần Go CGO=0 dù cross-compile thành công. Không build bằng `net
 Go runtime được link vào binary; license BSD kèm ZIP. Không có dependency Go
 bên thứ ba hoặc HTTP server chạy nền.
 
-Đầu ra `dist/HNHouji-Experience-0.6.1-preview.zip`, checksum và manifest; không
+Đầu ra `dist/HNHouji-Experience-0.6.2-preview-generic.zip`, checksum và manifest; không
 đưa source test, node_modules, model, key hay state vào ZIP. Build metadata nằm
 trong manifest. Build riêng tạo ZIP generic; khi được workflow kernel gọi,
 tạo ZIP có hậu tố bản kernel/hash và metadata nhúng. Workflow module không tự
