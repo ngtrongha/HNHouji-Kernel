@@ -320,3 +320,10 @@ Every time a CI build error or device runtime bug occurs, **you MUST add its sym
 - **Symptom**: Scheduled Sync Kernel Matrix run `41451448896` fails at `Open or update sync PR` with `GitHub Actions is not permitted to create or approve pull requests`.
 - **Root Cause**: GitHub rejects the bot's PR creation under the repository Actions policy after the matrix branch is pushed. This run never compiles a kernel and is unrelated to a device's missing module metadata.
 - **Prevention**: Inspect the failing step before diagnosing kernel compatibility. Do not merge generated matrix changes, alter houji shields or broaden repository permissions to make the status green. Review matrix updates and repository policy separately from kernel/module builds.
+
+---
+
+## Rule 36: Replace Pinned Display Trees Without Git Checkout Overlay
+- **Symptom**: Release run `41981235349` fails in `Surgical 6.1-LTS Source Alignment` before compilation. The donor-equality check reports `drivers/gpu/drm/i915/display/intel_dpcd.h` as an extra file after pinning stock 6.1.157.
+- **Root Cause**: Path-based `git checkout` defaults to overlay mode: it copies donor files but leaves tracked ACK files absent from the donor. The previous integration fixture changed file contents without covering ACK-only files, so it missed this incomplete tree replacement.
+- **Prevention**: Use `git checkout --no-overlay "$STOCK_COMMIT" -- "${DISPLAY_PATHS[@]}"` for the five authorized display/backlight/SPMI paths. Keep exact donor equality and unchanged ACK DMA-buf/F2FS/header checks; never bypass a failed check. Run the workflow's actual replacement commands against real Git fixtures covering ACK-only deletion, donor-only addition, changed files and protected subsystem preservation in CI.

@@ -194,7 +194,8 @@ jobs:
           include/linux/backlight.h
           drivers/spmi/
         )
-        git checkout "$STOCK_COMMIT" -- "${DISPLAY_PATHS[@]}"
+        # Remove ACK-only files too, so each selected tree exactly matches stock.
+        git checkout --no-overlay "$STOCK_COMMIT" -- "${DISPLAY_PATHS[@]}"
         git diff --exit-code "$STOCK_COMMIT" -- "${DISPLAY_PATHS[@]}"
         git diff --exit-code "$ACK_177_COMMIT" -- drivers/dma-buf/ fs/f2fs/ \
           'include/linux/dma-*' include/linux/sync_file.h include/linux/iosys-map.h
