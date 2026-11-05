@@ -168,7 +168,7 @@ jobs:
       working-directory: ${{ github.workspace }}/kernel/common
       run: |
         set -euo pipefail
-        echo "[+] Aligning 6.1-lts source with Google ACK android14-6.1 and certified houji baseline..."
+        echo "[+] Aligning ACK 6.1.177 with houji stock 6.1.157 display interfaces..."
 
         # 1. Base tree: Google ACK android14-6.1 pinned to certified baseline commit 06aabb3c55
         # (Linux 6.1.177 LTS + full ANDROID: GKI vendor hooks before breaking f2fs zoned device commits)
@@ -178,21 +178,26 @@ jobs:
           git fetch --no-tags https://android.googlesource.com/kernel/common refs/heads/android14-6.1 --depth=100
         fi
         git checkout -B lts-houji "$ACK_177_COMMIT"
+        test "$(make -s kernelversion)" = "6.1.177"
 
-        # 2. Surgically pin ONLY the ~2% Display DRM & SPMI PMIC interface to stock 6.1.138 (tag android14-6.1-2025-06_r15)
-        # Xiaomi 14's prebuilt vendor display modules (msm_drm.ko, mi_disp.ko) require this exact interface.
+        # 2. Match the display/PMIC source to the user's updated stock boot.
+        # This combination still requires boot/display validation on the new firmware.
         # Note: Do NOT pin drivers/dma-buf/ or dma-fence/dma-resv headers (Rule 2).
-        echo "[-] Surgically pinning display DRM/SPMI interface to stock 6.1.138 (0c3d559bcd85 / 2025-06)..."
-        STOCK_TAG="0c3d559bcd85c64dae9c9c9687abbe5347fff3ad"
-        if ! git fetch --no-tags https://android.googlesource.com/kernel/common "$STOCK_TAG" --depth=1 2>/dev/null; then
-          git fetch --no-tags https://android.googlesource.com/kernel/common refs/heads/deprecated/android14-6.1-2025-06 --depth=1
-        fi
-        git checkout FETCH_HEAD -- \
-          drivers/gpu/drm/ \
-          include/drm/ \
-          drivers/video/backlight/ \
-          include/linux/backlight.h \
+        echo "[-] Pinning display DRM/SPMI to stock 6.1.157 (78a0a76cd7b7)..."
+        STOCK_COMMIT="78a0a76cd7b7029059bdf03eba04ebeaf9af4eed"
+        git fetch --no-tags https://android.googlesource.com/kernel/common "$STOCK_COMMIT" --depth=1
+        test "$(git rev-parse FETCH_HEAD)" = "$STOCK_COMMIT"
+        DISPLAY_PATHS=(
+          drivers/gpu/drm/
+          include/drm/
+          drivers/video/backlight/
+          include/linux/backlight.h
           drivers/spmi/
+        )
+        git checkout "$STOCK_COMMIT" -- "${DISPLAY_PATHS[@]}"
+        git diff --exit-code "$STOCK_COMMIT" -- "${DISPLAY_PATHS[@]}"
+        git diff --exit-code "$ACK_177_COMMIT" -- drivers/dma-buf/ fs/f2fs/ \
+          'include/linux/dma-*' include/linux/sync_file.h include/linux/iosys-map.h
 
         # Prevent -Wvla build error in pinned drivers/gpu/drm
         if [ -f "Makefile" ]; then
@@ -203,12 +208,14 @@ jobs:
         git config user.name "Antigravity Builder"
         git config user.email "builder@antigravity.internal"
         git add -A
-        git commit -m "houji: certified Release 8 baseline (ACK 6.1.177 + stock 6.1.138 DRM)" --no-verify || true
+        if ! git diff --cached --quiet; then
+          git commit -m "houji: ACK 6.1.177 + stock 6.1.157 display interfaces" --no-verify
+        fi
 
         # Update environment with new aligned commit SHA
         NEW_COMMIT_SHA=$(git rev-parse HEAD)
         echo "KERNEL_SOURCE_COMMIT=$NEW_COMMIT_SHA" >> "$GITHUB_ENV"
-        echo "[+] Successfully aligned source to verified baseline $(make kernelversion 2>/dev/null) (commit: $NEW_COMMIT_SHA)"
+        echo "[+] Source aligned: $(make kernelversion 2>/dev/null) + stock 6.1.157 display (commit: $NEW_COMMIT_SHA); device validation pending"
 
     - name: Set Build Timestamp from Kernel Commit
       shell: bash

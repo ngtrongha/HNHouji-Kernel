@@ -25,8 +25,8 @@ Hardened, hardware-safe Android Generic Kernel Image (GKI 2.0) built on **Google
 
 Standard upstream GKI kernels often suffer from black screens, screen flickering, or bootloops on Xiaomi 14 due to proprietary vendor module expectations. HNHouji implements targeted hardware shielding:
 
-- 🛡️ **Zero Black Screen Guarantee**: Surgically pins Display DRM (`drivers/gpu/drm/`, `include/drm/`), Backlight (`drivers/video/backlight/`, `include/linux/backlight.h`), and SPMI (`drivers/spmi/`) to stock 6.1.138 baseline (`0c3d559bcd85`). Matches Xiaomi's prebuilt vendor display modules (`msm_drm.ko`, `mi_disp.ko`) with 100% binary ABI compatibility.
-- 👁️ **LTPO & Brightness Flicker Elimination**: Fixes VBlank and MIPI-DSI `0x51` brightness modulation timing shifts introduced in post-6.1.138 upstream ACK, providing butter-smooth 1–120 Hz LTPO refresh and stable low-light brightness.
+- 🛡️ **Stock Display Interfaces**: Pins Display DRM (`drivers/gpu/drm/`, `include/drm/`), Backlight (`drivers/video/backlight/`, `include/linux/backlight.h`), and SPMI (`drivers/spmi/`) to stock 6.1.157 (`78a0a76cd7b7`), while retaining the ACK 6.1.177 LTS base. See [baseline evidence](docs/stock-baseline.md).
+- 👁️ **Display Validation**: The updated stock display pin targets the user's new firmware. Boot, LTPO refresh and low-brightness behavior still require device testing; r8/r11 validation applies to the previous 6.1.138 pin.
 - 💾 **F2FS `/data` Mount Integrity**: Preserves Google ACK 6.1.177 stock F2FS struct layouts so Xiaomi's vendor memory hooks (`mi_ext_lru.ko`, `mi_memory.ko`) mount encrypted `/data` partitions cleanly without panics.
 - 🚀 **ARM64 Assembly & Memory Speedup**: Upgrades `memcmp` to a 64-byte NEON SIMD loop, adds L1 cache stream prefetching (`prfm pldl1strm`) to `memcpy`/`copy_to_user`, and applies 16-byte alignment to `clear_page`.
 - 🔋 **SM8650 S2Idle & Power Enhancements**: Eliminates spurious deep sleep wakeup loops during `s2idle` (Sultan Alsawaf fix), reduces `pm_freeze_timeout` to 2s, and trims `alarmtimer` wakelock to 100ms for minimal standby battery drain.

@@ -1,5 +1,11 @@
 # Xiaomi 14 (houji) GKI 6.1 Build & Runtime Error Prevention Rules
 
+## Authorized stock 6.1.157 display baseline (2026-11-05)
+- The user explicitly requested **stock 6.1.157 + 6.1 LTS**, followed by a new release build. Retain ACK `06aabb3c55412104814644e8d1b37df04940d99a` (6.1.177); update only the five DRM/backlight/SPMI paths to stock `78a0a76cd7b7029059bdf03eba04ebeaf9af4eed`.
+- This supersedes the old 6.1.138 display pin and exact-r11 pin restrictions in Rules 2/4/10/11/19 for this authorized firmware update. Preserve the ACK dma-buf/F2FS/MM/scheduler code, config policy, WALT/HZ restrictions, cache guard and KMI checks. Do not replace the full ACK tree with 6.1.157 or track newer ACK HEAD.
+- Fetch and check out the exact stock SHA; fail if unavailable rather than substituting a branch tip. Evidence and limits are in `docs/stock-baseline.md`. The new combination is not device-certified by historical r8/r11 testing.
+- Build on GitHub Actions with `commit_mode=latest`, 4 KiB pages and version-mismatch bypass disabled. The new kernel remains 6.1.177 and its paired module retains that baseline contract.
+
 ## Build mode preference (user instruction, 2026-10-24)
 - Always default component resolution and Codex-triggered builds to `commit_mode=latest`; do not silently substitute `verified`. An explicit later user choice may override this preference.
 - This preference tracks root/SUSFS/NoMount component branch tips. Preserve the houji ACK baseline and display/vendor compatibility shields below; do not infer permission to merge upstream kernel code or remove these shields from the commit-mode choice.
