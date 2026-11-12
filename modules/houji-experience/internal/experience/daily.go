@@ -130,7 +130,7 @@ func (a *App) dailyAnalyze(ctx context.Context, at time.Time, automatic bool, tr
 	payload["automatic_run"] = automatic
 	sync := a.KernelSync(ctx)
 	payload["kernel_compatibility"] = map[string]any{"ready": sync.Ready, "state": sync.State}
-	knobs := a.configuredKernelPlan(baseCore)
+	knobs := a.aiKernelPlan(baseCore)
 	payload["kernel_controls"] = knobs
 	// Reserve before the network, including failures. No unattended retries.
 	if err = atomicJSON(a.state("daily-attempt.json"), DailyAttempt{Day: date, At: at.UTC().Format(time.RFC3339), Automatic: automatic}); err != nil {

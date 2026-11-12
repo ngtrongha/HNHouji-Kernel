@@ -1,4 +1,4 @@
-# HNHouji Experience 0.6.2-preview
+# HNHouji Experience 0.6.3-preview
 
 Module KernelSU độc lập cho Xiaomi 14 **houji**, arm64, GKI 6.1 và user 0.
 WebUI mở trong Manager; CLI là phương án dự phòng. Không cần metamodule,
@@ -7,6 +7,26 @@ defconfig, pin/driver và không đóng gói model AI.
 
 **Preview chưa được chứng nhận trên thiết bị.** Test máy phát triển và mock
 Android không thay thế thử nghiệm reboot, thông báo, game và pin chờ trên houji.
+
+## Mới trong 0.6.3-preview
+
+- Trong **Tổng quan → Kernel**, chọn mức rồi bấm **Áp dụng kernel ngay**. Module
+  ghi các mục đang bật và được hỗ trợ, đọc lại giá trị thực và hiển thị giá trị
+  ban đầu để hoàn tác. Nút này dùng được khi watcher chưa chạy. Cần bật module,
+  bật preset kernel và xác minh đúng cặp build.
+- CPU chỉnh trần xung theo từng `policy` (kHz), GPU Adreno chỉnh trần xung
+  (Hz). Danh sách chỉ hiện các mức driver hỗ trợ trong khoảng hiện tại. Để
+  tăng lại sau khi hạ trần, chọn **Gốc** trước rồi chọn mức mới.
+- Khi toàn bộ swap đang dùng là ZRAM, có thể chọn `vm.swappiness` ở mức
+  60, 100 hoặc 120 để chỉnh ưu tiên swap. Dung lượng và bộ nén ZRAM vẫn
+  do hệ thống quản lý.
+- Trần xung và swappiness mặc định **Gốc**, chỉ ghi khi bấm **Áp dụng kernel
+  ngay**. Module lưu lựa chọn để lần sau bấm lại, còn quyền hoàn tác giá trị
+  đã ghi kết thúc khi reboot. Các mục này nằm ngoài quyền của AI.
+- Lỗi bảo vệ thông báo hoặc thiết lập Android được xử lý riêng. Tắt preset để
+  hoàn tác các giá trị kernel do module sở hữu.
+- AnyKernel3 mới ngừng cài helper cũ. Khi cài riêng ZIP module, installer vẫn
+  sao lưu và gỡ helper khỏi `service.d`; khởi động lại để các sysctl cũ hết hiệu lực.
 
 ## Sửa lỗi 0.6.2-preview
 
@@ -434,7 +454,7 @@ binary thuần Go CGO=0 dù cross-compile thành công. Không build bằng `net
 Go runtime được link vào binary; license BSD kèm ZIP. Không có dependency Go
 bên thứ ba hoặc HTTP server chạy nền.
 
-Đầu ra `dist/HNHouji-Experience-0.6.2-preview-generic.zip`, checksum và manifest; không
+Đầu ra `dist/HNHouji-Experience-0.6.3-preview-generic.zip`, checksum và manifest; không
 đưa source test, node_modules, model, key hay state vào ZIP. Build metadata nằm
 trong manifest. Build riêng tạo ZIP generic; khi được workflow kernel gọi,
 tạo ZIP có hậu tố bản kernel/hash và metadata nhúng. Workflow module không tự

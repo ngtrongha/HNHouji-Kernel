@@ -28,10 +28,23 @@ const labels: Record<string, string> = { observe: "Quan sát", daily: "Hằng ng
 const reasons: Record<string, string> = { "daily-default": "Hằng ngày mặc định: áp dụng preset kernel có hỗ trợ và các quy tắc ứng dụng đã chọn.", disabled: "Tự động đang tắt; không áp dụng tinh chỉnh.", "rules-local": "Hoạt động bằng quy tắc cục bộ, không gọi AI.", "integration-observe": "Theo dõi ứng dụng; cấu hình đồ họa/container nằm trong ứng dụng đó.", "game-mode-unsupported": "GameManager chưa hỗ trợ performance cho ứng dụng này.", "legacy-conflict": "Helper cũ xuất hiện. Xử lý trong Chẩn đoán rồi reboot.", "restore-conflict": "Có thay đổi bên ngoài hoặc trạng thái chưa khôi phục được. Xem Chẩn đoán.", "reboot-required": "Reboot sau khi xử lý helper cũ trước khi bật tự động.", "owner-user-only": "Chỉ quản lý người dùng chính (user 0).", "watcher-offline": "Watcher chưa chạy. Reboot sau cài đặt và kiểm tra Manager.", "not-started": "Chưa khởi động watcher." };
 reasons["adaptive-learned-game"] = "Đã đủ lịch sử trong khung giờ này; chọn Game Android cho ứng dụng hỗ trợ. Có thể đặt quy tắc riêng trong Ứng dụng.";
 reasons["adaptive-pressure"] = "Đã đo được áp lực tài nguyên; trở về Hằng ngày và hoàn tác game mode do module quản lý.";
+reasons["setting-failed"] = "Thiết lập Android gặp lỗi. Mục Kernel bên dưới hiển thị giá trị kernel đang dùng.";
 
 function notify(message: string, error = false) { const box = $("notification"); box.textContent = message; box.classList.toggle("error", error); box.hidden = false; }
 function failure(error: unknown) {
   const code = error instanceof Error ? error.message : "Không thể hoàn thành thao tác.";
+  if (code === "proposal-kernel-mismatch") {
+    notify(latest?.kernel_sync?.message || "Cần cài ZIP Houji Experience đi cùng đúng bản kernel đang chạy.", true);
+    return;
+  }
+  if (code === "kernel-frequency-unavailable" || code === "proposal-kernel-unsupported") {
+    notify("Mức đã chọn không còn khả dụng. Kiểm tra mức hiện tại và danh sách mức kernel.", true);
+    return;
+  }
+  if (code === "kernel-preset-disabled" || code === "kernel-recovery-pending" || code === "reboot-required") {
+    notify(code === "kernel-preset-disabled" ? "Bật preset kernel trước khi áp dụng." : code === "reboot-required" ? "Xử lý helper cũ trong Chẩn đoán rồi khởi động lại." : "Khởi động lại để module xử lý trạng thái hoàn tác từ phiên trước.", true);
+    return;
+  }
   const messages:Record<string,string> = {"learning-needs-more-samples":"Chưa đủ dữ liệu đã lưu. Để module quan sát thêm ít nhất vài phút rồi cập nhật thống kê.","ai-disabled-or-not-configured":"Hãy cấu hình và bật API trong Trợ lý AI trước khi phân tích.","learning-disabled":"Ghi nhận hoặc module đang tắt; bật lại trước khi phân tích.","learning-changed-during-analysis":"Cài đặt đã đổi khi đang phân tích; kết quả không được lưu.","unknown timezone":"Múi giờ không hợp lệ. Ví dụ: Asia/Ho_Chi_Minh.","learning-history-invalid":"Lịch sử không hợp lệ. Xóa lịch sử để bắt đầu quan sát lại."};
   const settingsErrors:Record<string,string>={"proposal-pressure-unknown":"Thiếu dữ liệu PSI hoặc thermal hợp lệ; chưa cho phép đổi mức kernel.","proposal-pressure":"Máy đang có áp lực bộ nhớ hoặc nhiệt; chưa đổi mức kernel.","proposal-control-disabled":"Control hoặc công tắc tổng đang tắt; AI không tự bật lại.","settings-preview-stale":"Cấu hình đã đổi. Xem trước lại rồi áp dụng.","settings-preview-expired":"Bản xem trước hết hạn hoặc khác boot. Tạo bản xem trước mới.","settings-transaction-conflict":"Khôi phục đang có thay đổi xung đột. Giữ nguyên dữ liệu và kiểm tra Chẩn đoán.","invalid settings backup":"Backup sai phiên bản hoặc cấu trúc.","unknown kernel level":"Mức kernel không thuộc danh sách cho phép.","unknown system choice":"Lựa chọn Android không thuộc danh sách cho phép.","owner-user-only":"Chỉ quản lý người dùng chính (user 0).","module disabled":"Module đang tắt; bật module trước khi chọn mức áp dụng."};
   notify(messages[code] || settingsErrors[code] || (code.startsWith("system setting unsupported:")?"Chưa xác minh hỗ trợ lựa chọn Android này trên thiết bị.":code), true);
@@ -69,8 +82,9 @@ function render(status: any) {
       const levels=document.createElement("select");levels.setAttribute("aria-label",`Mức ${knob.label}`);
       for(const level of knob.levels || ["stock"]){const option=document.createElement("option");option.value=level;option.textContent=level==="stock"?"Gốc · hoàn tác override":level;levels.append(option);}
       levels.value=knob.level;
-      on.addEventListener("change",async()=>{on.disabled=true;try{await act({action:"kernel_control_set",control:knob.control,enabled:on.checked},"Đã lưu lựa chọn. Theo dõi giá trị thực để xác nhận áp dụng.");}catch(error){failure(error);on.checked=knob.enabled;}finally{on.disabled=false;}});
-      levels.addEventListener("change",async()=>{levels.disabled=true;try{await act({action:"kernel_level_set",control:knob.control,level:levels.value},"Đã lưu mức. Watcher áp dụng khi đủ điều kiện.");}catch(error){failure(error);levels.value=knob.level;}finally{levels.disabled=false;}});
+      const saved = knob.manual ? "Đã lưu lựa chọn. Bấm Áp dụng kernel ngay để ghi." : "Đã lưu lựa chọn. Theo dõi giá trị thực để xác nhận áp dụng.";
+      on.addEventListener("change",async()=>{on.disabled=true;try{await act({action:"kernel_control_set",control:knob.control,enabled:on.checked},on.checked ? saved : "Đã tắt điều khiển và hoàn tác giá trị do module ghi.");}catch(error){failure(error);on.checked=knob.enabled;}finally{on.disabled=false;}});
+      levels.addEventListener("change",async()=>{levels.disabled=true;try{await act({action:"kernel_level_set",control:knob.control,level:levels.value},levels.value === "stock" ? "Đã chọn giữ giá trị gốc." : saved);}catch(error){failure(error);levels.value=knob.level;}finally{levels.disabled=false;}});
       row.append(label,levels);
     }
     knobs.append(row);
@@ -161,6 +175,15 @@ for (const button of document.querySelectorAll<HTMLButtonElement>("[data-open]")
 for (const button of document.querySelectorAll<HTMLButtonElement>("[data-guide]")) button.addEventListener("click", () => { void rpc({ action: "guide_open", guide: button.dataset.guide }).catch(failure); });
 
 bind("enable", async () => { await act({ action: "enable" }, "Đã bật quy tắc tự động. Profile cập nhật sau hai mẫu foreground."); });
+bind("kernel-apply", async () => {
+  const { knobs } = await rpc<{knobs: {state: string}[]}>({ action: "kernel_apply" });
+  const applied = knobs.filter(knob => knob.state === "applied").length;
+  const alreadySet = knobs.filter(knob => knob.state === "already-set").length;
+  notify(applied || alreadySet
+    ? `Đã đọc lại từ kernel. Module đang áp dụng ${applied} mục, ${alreadySet} mục đã đúng giá trị.`
+    : "Không có mục đang bật và được kernel hỗ trợ để áp dụng.");
+  await refresh();
+});
 input("kernel-tuning").addEventListener("change", async () => {
   const checkbox = input("kernel-tuning"); checkbox.disabled = true;
   try { await act({action:"kernel_tuning_set",enabled:checkbox.checked}, checkbox.checked ? "Đã bật preset kernel; áp dụng khi xác minh đạt và tự động đang bật." : "Đã tắt preset kernel và yêu cầu hoàn tác."); }

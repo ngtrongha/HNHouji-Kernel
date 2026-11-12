@@ -144,7 +144,7 @@ func makeProposal(actions []AIAction, legend []HabitApp, base Config, learningGe
 			if action.Level != "" {
 				return p, errors.New("proposal-action-not-allowed")
 			}
-			if !validKernelControl(action.Control) || action.AppID != "" || action.Profile != "" || action.Enabled == nil || seen["control:"+action.Control] {
+			if !aiKernelControl(action.Control) || action.AppID != "" || action.Profile != "" || action.Enabled == nil || seen["control:"+action.Control] {
 				return p, errors.New("proposal-kernel-invalid")
 			}
 			seen["control:"+action.Control] = true
@@ -153,7 +153,7 @@ func makeProposal(actions []AIAction, legend []HabitApp, base Config, learningGe
 				p.Changes = append(p.Changes, AIChange{Kind: action.Kind, Control: action.Control, Before: enabledText(before), After: enabledText(*action.Enabled), Reason: action.Reason})
 			}
 		case "kernel_level":
-			if !validKernelLevel(action.Control, action.Level) || action.Enabled != nil || action.AppID != "" || action.Profile != "" || seen["control:"+action.Control] {
+			if !aiKernelControl(action.Control) || !validKernelLevel(action.Control, action.Level) || action.Enabled != nil || action.AppID != "" || action.Profile != "" || seen["control:"+action.Control] {
 				return p, errors.New("proposal-kernel-invalid")
 			}
 			seen["control:"+action.Control] = true
@@ -421,7 +421,7 @@ func (a *App) applyProposal(ctx context.Context, id string, automatic bool) (AIA
 			if automatic && (!c.KernelTuning || !kernelControlEnabled(c, change.Control)) {
 				return AIApplication{}, errors.New("proposal-control-disabled")
 			}
-			if !validKernelControl(change.Control) || (change.After != "on" && change.After != "off") || change.Before != enabledText(kernelControlEnabled(c, change.Control)) {
+			if !aiKernelControl(change.Control) || (change.After != "on" && change.After != "off") || change.Before != enabledText(kernelControlEnabled(c, change.Control)) {
 				return AIApplication{}, errors.New("proposal-kernel-invalid")
 			}
 			if change.After == "on" {
@@ -434,7 +434,7 @@ func (a *App) applyProposal(ctx context.Context, id string, automatic bool) (AIA
 				}
 			}
 		case "kernel_level":
-			if !validKernelLevel(change.Control, change.After) || !validKernelLevel(change.Control, change.Before) || change.Before != kernelLevel(c, change.Control) {
+			if !aiKernelControl(change.Control) || !validKernelLevel(change.Control, change.After) || !validKernelLevel(change.Control, change.Before) || change.Before != kernelLevel(c, change.Control) {
 				return AIApplication{}, errors.New("proposal-kernel-invalid")
 			}
 			if !c.KernelTuning || !kernelControlEnabled(c, change.Control) {
@@ -660,7 +660,7 @@ func (a *App) undoAI(ctx context.Context) (AIApplication, error) {
 			return r, errors.New("proposal-undo-conflict")
 		}
 		if change.Kind == "kernel_control" {
-			if !validKernelControl(change.Control) || (change.Before != "on" && change.Before != "off") {
+			if !aiKernelControl(change.Control) || (change.Before != "on" && change.Before != "off") {
 				return r, errors.New("proposal-kernel-invalid")
 			}
 			if enabledText(kernelControlEnabled(c, change.Control)) != change.After {
@@ -670,7 +670,7 @@ func (a *App) undoAI(ctx context.Context) (AIApplication, error) {
 				return r, errors.New("proposal-undo-conflict")
 			}
 		}
-		if change.Kind == "kernel_level" && (!validKernelLevel(change.Control, change.Before) || kernelLevel(c, change.Control) != change.After || !kernelControlEnabled(c, change.Control)) {
+		if change.Kind == "kernel_level" && (!aiKernelControl(change.Control) || !validKernelLevel(change.Control, change.Before) || kernelLevel(c, change.Control) != change.After || !kernelControlEnabled(c, change.Control)) {
 			return r, errors.New("proposal-undo-conflict")
 		}
 	}

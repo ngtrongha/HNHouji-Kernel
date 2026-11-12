@@ -109,6 +109,11 @@ func TestProposalStructuredParsingDoesNotAcceptCommandsOrUnknownApps(t *testing.
 	}
 	a, _ := fixture(t)
 	c, _ := a.config()
+	for control, level := range map[string]string{"cpu_max:policy0": "1800000", "gpu_max": "600000000", "zram_swappiness": "100"} {
+		if _, err := makeProposal([]AIAction{{Kind: "kernel_level", Control: control, Level: level, Reason: "x"}}, nil, c, 0, a.bootID(), time.Now()); err == nil {
+			t.Fatalf("AI accepted manual control %q", control)
+		}
+	}
 	_, err := makeProposal([]AIAction{{Kind: "app_profile", AppID: "app-99", Profile: "native-game", Reason: "x"}}, nil, c, 0, a.bootID(), time.Now())
 	if err == nil {
 		t.Fatal("unknown ID accepted")

@@ -14,7 +14,7 @@
     <header class="masthead">
       <div class="brand-mark" aria-hidden="true">h<span>。</span></div>
       <div><p class="eyebrow">HNHOUJI / XIAOMI 14</p><h1>Experience</h1></div>
-      <span class="version">PREVIEW<br>0.6.2</span>
+      <span class="version">PREVIEW<br>0.6.3</span>
     </header>
     <div id="bridge-warning" class="notice" hidden>Mở WebUI từ KernelSU Manager để kết nối thiết bị. Nếu Manager không hỗ trợ bridge, dùng CLI houjictl. Trang này không dùng dữ liệu mô phỏng.</div>
     <div id="notification" class="notice" role="status" aria-live="polite" hidden></div>
@@ -42,7 +42,7 @@
         </div>
         <article class="card"><h3>Pin · dữ liệu thực</h3><p>Thông tin đọc từ thiết bị, không thực hiện calibration. Dòng pin không phải dòng định mức charger.</p><pre id="battery-check">Chưa tải thông tin pin.</pre><h4>Khoảng screen-off do watcher quan sát</h4><pre id="battery-observation">Chưa đủ mẫu.</pre><h4>Thống kê Android riêng</h4><pre id="battery-android" role="status" aria-live="polite">Chưa tải thống kê.</pre><button id="battery-refresh" class="outline">Cập nhật thống kê pin</button><p class="footnote">Hai nguồn có mốc và độ phủ khác nhau; screen-off không đồng nghĩa deep sleep. Không suy ra mức tiết kiệm pin từ một mẫu.</p></article>
         <label for="control-search">Tìm điều khiển kernel và Android</label><input id="control-search" type="search" placeholder="Nhập tên điều khiển">
-        <article class="card"><div class="section-title"><span class="step">01</span><h3>Kernel · Hằng ngày</h3></div><p id="kernel-sync">Đang xác minh cấu hình và bản build kernel…</p><label class="check"><input id="kernel-tuning" type="checkbox"> Tự động áp dụng preset kernel Hằng ngày</label><div id="kernel-knobs" class="app-list"></div><p class="footnote">Áp dụng khi tự động đang bật và kernel khớp metadata. Bỏ qua mục không hỗ trợ; lưu giá trị gốc trước khi ghi. Hiệu quả cần đo trên máy.</p><div class="button-row"><button class="outline" data-open="apps">Quy tắc ứng dụng →</button><button class="text-button" data-open="ai">Cấu hình AI sau</button></div></article>
+        <article class="card"><div class="section-title"><span class="step">01</span><h3>Kernel · Hằng ngày</h3></div><p id="kernel-sync">Đang xác minh cấu hình và bản build kernel…</p><label class="check"><input id="kernel-tuning" type="checkbox"> Bật preset kernel Hằng ngày</label><div id="kernel-knobs" class="app-list"></div><div class="button-row"><button id="kernel-apply" class="primary">Áp dụng kernel ngay</button><button class="outline" data-open="apps">Quy tắc ứng dụng →</button></div></article>
         <article class="card"><div class="section-title"><span class="step">02</span><h3>Nhận xét từ dữ liệu hiện tại</h3></div><ul id="local-advice" class="advice"><li>Chưa có dữ liệu thiết bị.</li></ul><p class="footnote">Giữ nguyên HZ, WALT, thermal, kích thước/bộ nén ZRAM và driver vendor.</p></article>
       </section>
       <section id="apps" role="tabpanel" aria-labelledby="tab-apps" hidden>

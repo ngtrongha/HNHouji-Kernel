@@ -327,3 +327,15 @@ Every time a CI build error or device runtime bug occurs, **you MUST add its sym
 - **Symptom**: Release run `41981235349` fails in `Surgical 6.1-LTS Source Alignment` before compilation. The donor-equality check reports `drivers/gpu/drm/i915/display/intel_dpcd.h` as an extra file after pinning stock 6.1.157.
 - **Root Cause**: Path-based `git checkout` defaults to overlay mode: it copies donor files but leaves tracked ACK files absent from the donor. The previous integration fixture changed file contents without covering ACK-only files, so it missed this incomplete tree replacement.
 - **Prevention**: Use `git checkout --no-overlay "$STOCK_COMMIT" -- "${DISPLAY_PATHS[@]}"` for the five authorized display/backlight/SPMI paths. Keep exact donor equality and unchanged ACK DMA-buf/F2FS/header checks; never bypass a failed check. Run the workflow's actual replacement commands against real Git fixtures covering ACK-only deletion, donor-only addition, changed files and protected subsystem preservation in CI.
+
+---
+
+## Rule 37: Capture Crash Evidence Before Changing Houji Camera Compatibility
+- **Symptom**: Xiaomi 14 (`houji`) intermittently reboots when opening Camera. The affected HyperOS build, live kernel build ID and runtime preset are unconfirmed.
+- **Root Cause**: Unconfirmed. The released r13 kernel passed CI, but the report contains no previous-boot panic log or watchdog evidence.
+- **Prevention**: After an incident, collect `sys.boot.reason`, `ro.boot.bootreason` and available `dmesg-ramoops`/`console-ramoops` from `/sys/fs/pstore` before another reboot. Record the firmware, kernel build ID and runtime tuning status. Isolate runtime tuning on the same kernel first. If testing compile-time performance patches, compare builds with matching source/component revisions and change only `use_perf`. Keep the ACK and stock display pins, vendor compatibility guards and KMI checks while diagnosing.
+
+## Rule 38: Keep Kernel Writes Independent of Android Tuning Failures
+- **Symptom**: Houji Experience can remain in Observe mode with stock kernel values even when kernel metadata matches and the preset is enabled.
+- **Root Cause**: A failure in an Android setting or the notification allowlist restored every journal entry, including verified kernel writes, and blocked the watcher for the same configuration generation. This is reproducible in the mock Android runner. The affected phone's current blocking reason is unconfirmed.
+- **Prevention**: Restore Android entries separately when Android tuning fails. Expose an immediate kernel-only apply action through the same state lock, identity/capability checks, pressure guard, readback and journal. Retire the old boot helper outside `service.d` because it can race module writes and reset ZRAM. This supersedes Rule 15's reference to helper-based F2FS tuning. Never guess legacy settings that have no recorded original value.

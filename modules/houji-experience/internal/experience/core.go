@@ -16,6 +16,7 @@ func (a *App) restoreEntries(ctx context.Context, j *Journal, match func(Entry) 
 	remaining := []Entry{}
 	failed := false
 	matched := false
+	boot := a.bootID()
 	for i := len(j.Entries) - 1; i >= 0; i-- {
 		e := j.Entries[i]
 		if !match(e) {
@@ -23,6 +24,9 @@ func (a *App) restoreEntries(ctx context.Context, j *Journal, match func(Entry) 
 			continue
 		}
 		matched = true
+		if e.Kind == "kernel" && manualKernelControl(kernelControlForKnob(e.Package)) && boot != "" && j.Boot != boot {
+			continue
+		}
 		current, err := a.current(ctx, e)
 		if err != nil {
 			remaining = append([]Entry{e}, remaining...)
@@ -91,6 +95,15 @@ func (a *App) apply(ctx context.Context, j *Journal, e Entry) error {
 	}
 	if before == e.Applied {
 		return nil
+	}
+	if e.Kind == "kernel" && e.Package == "vm.swappiness" && !a.onlyZRAMSwap() {
+		return errors.New("proposal-kernel-unsupported")
+	}
+	if e.Kind == "kernel" && (e.Package == "gpu_max" || cpuPolicy(e.Package) != "") {
+		knob := a.frequencyKnob(e.Package)
+		if knob.Current != before || knob.State != "available" || !hasLevel(knob, e.Applied) {
+			return errors.New("kernel-frequency-unavailable")
+		}
 	}
 	e.Before = before
 	j.Boot = a.bootID()
@@ -383,11 +396,11 @@ func (a *App) Step(ctx context.Context, pkg string, asleep bool) error {
 		return err
 	}
 	kernelStamp := fmt.Sprintf("%d:%s", c.Generation, a.bootID())
-	if a.writeFailureStamp == kernelStamp {
+	if a.writeFailureStamp == kernelStamp && a.writeFailureReason == "kernel-setting-failed" {
 		a.runtime("observe", "", a.writeFailureReason)
 		return nil
 	}
-	if err := a.tuneKernel(ctx, c, &j); err != nil {
+	if err := a.tuneKernel(ctx, c, &j, false); err != nil {
 		restoreErr := a.restoreEntries(ctx, &j, func(Entry) bool { return true })
 		a.protectedStamp = ""
 		if restoreErr == nil && (err.Error() == "proposal-pressure" || err.Error() == "proposal-pressure-unknown") {
@@ -403,18 +416,22 @@ func (a *App) Step(ctx context.Context, pkg string, asleep bool) error {
 		a.runtime("observe", "", "kernel-setting-failed")
 		return err
 	}
+	if a.writeFailureStamp == kernelStamp {
+		a.runtime("observe", "", a.writeFailureReason)
+		return nil
+	}
 	stampBytes, _ := json.Marshal(c.Protected)
 	stamp := fmt.Sprintf("%d:%s", c.Generation, digest(stampBytes))
 	if a.protectedStamp != stamp {
 		if err := a.tuneSystem(ctx, c, &j); err != nil {
-			_ = a.restoreEntries(ctx, &j, func(Entry) bool { return true })
+			_ = a.restoreEntries(ctx, &j, func(e Entry) bool { return e.Kind != "kernel" })
 			a.writeFailureStamp = kernelStamp
 			a.writeFailureReason = "setting-failed"
 			a.runtime("observe", "", "setting-failed")
 			return err
 		}
 		if err := a.protect(ctx, c, &j); err != nil {
-			_ = a.restoreEntries(ctx, &j, func(Entry) bool { return true })
+			_ = a.restoreEntries(ctx, &j, func(e Entry) bool { return e.Kind != "kernel" })
 			a.writeFailureStamp = kernelStamp
 			a.writeFailureReason = "restore-conflict"
 			a.runtime("observe", "", "restore-conflict")

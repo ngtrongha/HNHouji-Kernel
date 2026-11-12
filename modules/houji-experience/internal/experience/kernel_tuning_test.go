@@ -214,7 +214,7 @@ func TestLostZRAMCapabilityRestoresPageCluster(t *testing.T) {
 	knobValue(t, a, "tcp.congestion", "bbr")
 }
 
-func TestAppProtectionFailureDoesNotRepeatedlyReapplyKernel(t *testing.T) {
+func TestAppProtectionFailureDoesNotUndoKernelTuning(t *testing.T) {
 	a, f := fixture(t)
 	seedKnobs(t, a)
 	configured(t, a, true)
@@ -223,8 +223,8 @@ func TestAppProtectionFailureDoesNotRepeatedlyReapplyKernel(t *testing.T) {
 	if err := a.Step(ctx, "", false); err == nil {
 		t.Fatal("expected failed protection query")
 	}
-	knobValue(t, a, "vm.page-cluster", "3")
-	knobValue(t, a, "tcp.congestion", "cubic")
+	knobValue(t, a, "vm.page-cluster", "0")
+	knobValue(t, a, "tcp.congestion", "bbr")
 	before, err := os.ReadFile(a.state("journal.json"))
 	must(t, err)
 	must(t, a.Step(ctx, "", false))
@@ -233,5 +233,116 @@ func TestAppProtectionFailureDoesNotRepeatedlyReapplyKernel(t *testing.T) {
 	if string(before) != string(after) {
 		t.Fatal("app failure reapplied kernel preset")
 	}
+	knobValue(t, a, "vm.page-cluster", "0")
+}
+
+func TestManualKernelApplyVerifiesWritesWithoutWatcher(t *testing.T) {
+	a, f := fixture(t)
+	seedKnobs(t, a)
+	pairedFixture(t, a, false)
+	ctx := context.Background()
+	if r := a.Dispatch(ctx, Request{Action: "kernel_level_set", Control: "swap_readahead", Level: "1"}); !r.OK {
+		t.Fatal(r)
+	}
 	knobValue(t, a, "vm.page-cluster", "3")
+	r := a.Dispatch(ctx, Request{Action: "kernel_apply"})
+	if !r.OK {
+		t.Fatal(r)
+	}
+	knobs := r.Data.(map[string]any)["knobs"].([]KernelKnob)
+	if knobs[0].State != "applied" || knobs[0].Current != "1" || knobs[0].Before != "3" || f.writes != 0 {
+		t.Fatal(knobs, f.writes)
+	}
+	knobValue(t, a, "vm.page-cluster", "1")
+	knobValue(t, a, "tcp.congestion", "bbr")
+	knobValue(t, a, "f2fs:dm-42", "20")
+	knobValue(t, a, "f2fs:dm-7", "9")
+	if r = a.Dispatch(ctx, Request{Action: "kernel_tuning_set", Enabled: false}); !r.OK {
+		t.Fatal(r)
+	}
+	knobValue(t, a, "vm.page-cluster", "3")
+	knobValue(t, a, "tcp.congestion", "cubic")
+	knobValue(t, a, "f2fs:dm-42", "8")
+}
+
+func TestManualKernelApplyBlocksWrongBuildAndHighPressure(t *testing.T) {
+	a, _ := fixture(t)
+	seedKnobs(t, a)
+	pairedFixture(t, a, false)
+	ctx := context.Background()
+	must(t, atomicWrite(a.system("/proc/pressure/memory"), []byte("full avg10=3.0"), 0600))
+	if r := a.Dispatch(ctx, Request{Action: "kernel_apply"}); r.OK || r.Error != "proposal-pressure" {
+		t.Fatal(r)
+	}
+	writeRuntimeConfig(t, a, fixtureConfig+"CONFIG_CIFS=y\n")
+	if r := a.Dispatch(ctx, Request{Action: "kernel_apply"}); r.OK || r.Error != "proposal-kernel-mismatch" {
+		t.Fatal(r)
+	}
+	knobValue(t, a, "vm.page-cluster", "3")
+	knobValue(t, a, "tcp.congestion", "cubic")
+	knobValue(t, a, "f2fs:dm-42", "8")
+}
+
+func TestHardwareControlsRequireManualApplyAndExpireAtReboot(t *testing.T) {
+	a, _ := fixture(t)
+	seedKnobs(t, a)
+	ctx := context.Background()
+	cpu := "/sys/devices/system/cpu/cpufreq/policy0/"
+	gpu := "/sys/class/kgsl/kgsl-3d0/devfreq/"
+	for node, value := range map[string]string{
+		cpu + "scaling_max_freq":              "2200000",
+		cpu + "scaling_min_freq":              "1200000",
+		cpu + "scaling_available_frequencies": "800000 1200000 1800000 2200000 2600000",
+		gpu + "max_freq":                      "900000000",
+		gpu + "min_freq":                      "300000000",
+		gpu + "available_frequencies":         "900000000 600000000 300000000",
+		"/proc/sys/vm/swappiness":             "160",
+	} {
+		must(t, atomicWrite(a.system(node), []byte(value), 0600))
+	}
+	setLevel := func(control, level string) Response {
+		return a.Dispatch(ctx, Request{Action: "kernel_level_set", Control: control, Level: level})
+	}
+	for _, level := range []string{"800000", "2000000", "2600000"} {
+		if r := setLevel("cpu_max:policy0", level); r.OK {
+			t.Fatal("accepted frequency below minimum, missing from table or above current cap", r)
+		}
+	}
+	for control, level := range map[string]string{"cpu_max:policy0": "1800000", "gpu_max": "600000000", "zram_swappiness": "100"} {
+		if r := setLevel(control, level); !r.OK {
+			t.Fatal(r)
+		}
+	}
+	must(t, a.Step(ctx, "", false))
+	knobValue(t, a, "cpu_max:policy0", "2200000")
+	knobValue(t, a, "gpu_max", "900000000")
+	knobValue(t, a, "vm.swappiness", "160")
+	if r := a.Dispatch(ctx, Request{Action: "kernel_apply"}); !r.OK {
+		t.Fatal(r)
+	}
+	must(t, a.Step(ctx, "", false))
+	knobValue(t, a, "cpu_max:policy0", "1800000")
+	knobValue(t, a, "gpu_max", "600000000")
+	knobValue(t, a, "vm.swappiness", "100")
+	if r := setLevel("gpu_max", "stock"); !r.OK {
+		t.Fatal(r)
+	}
+	knobValue(t, a, "gpu_max", "900000000")
+	// A vendor cap can coincidentally equal our previous value on the next boot.
+	must(t, atomicWrite(a.system("/proc/sys/kernel/random/boot_id"), []byte("boot-two"), 0600))
+	must(t, a.Recover(ctx))
+	must(t, a.Step(ctx, "", false))
+	knobValue(t, a, "cpu_max:policy0", "1800000")
+	knobValue(t, a, "vm.swappiness", "100")
+	journal, err := a.journal()
+	must(t, err)
+	for _, entry := range journal.Entries {
+		if entry.Kind == "kernel" && manualKernelControl(kernelControlForKnob(entry.Package)) {
+			t.Fatalf("retained manual ownership across reboot: %+v", entry)
+		}
+	}
+	must(t, atomicWrite(a.system("/proc/swaps"), []byte("Filename Type Size Used Priority\n/dev/block/zram0 partition 1024 0 1\n/data/swapfile file 1024 0 -1\n"), 0600))
+	if r := setLevel("zram_swappiness", "120"); r.OK {
+		t.Fatal("accepted swappiness while disk swap is active", r)
+	}
 }

@@ -5,7 +5,10 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path"
 	"regexp"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -22,15 +25,33 @@ type KernelKnob struct {
 	Before  string   `json:"before,omitempty"`
 	State   string   `json:"state"`
 	Detail  string   `json:"detail"`
+	Manual  bool     `json:"manual,omitempty"`
 }
 
 var blockNameRE = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 var tcpNameRE = regexp.MustCompile(`^[a-z0-9_]{1,32}$`)
 var zramSwapRE = regexp.MustCompile(`^/dev/(?:block/)?zram[0-9]+$`)
+var cpuPolicyRE = regexp.MustCompile(`^policy(?:0|[1-9][0-9]?)$`)
 
-func validKernelControl(id string) bool {
+func aiKernelControl(id string) bool {
 	return id == "swap_readahead" || id == "tcp_congestion" || id == "data_fsync"
 }
+
+func cpuPolicy(id string) string {
+	if name, ok := strings.CutPrefix(id, "cpu_max:"); ok && cpuPolicyRE.MatchString(name) {
+		return name
+	}
+	return ""
+}
+
+func validKernelControl(id string) bool {
+	return aiKernelControl(id) || id == "zram_swappiness" || id == "gpu_max" || cpuPolicy(id) != ""
+}
+
+func manualKernelControl(id string) bool {
+	return validKernelControl(id) && !aiKernelControl(id)
+}
+
 func defaultKernelLevel(id string) string {
 	switch id {
 	case "swap_readahead":
@@ -40,7 +61,7 @@ func defaultKernelLevel(id string) string {
 	case "data_fsync":
 		return "20"
 	}
-	return ""
+	return "stock"
 }
 func validKernelLevel(id, level string) bool {
 	if !validKernelControl(id) {
@@ -56,8 +77,10 @@ func validKernelLevel(id, level string) bool {
 		return level == "cubic" || level == "bbr"
 	case "data_fsync":
 		return level == "20"
+	case "zram_swappiness":
+		return level == "60" || level == "100" || level == "120"
 	}
-	return false
+	return validKernelValue(id, level)
 }
 func kernelLevel(c Config, id string) string {
 	if level := c.KernelLevels[id]; level != "" {
@@ -79,6 +102,13 @@ func kernelControlForKnob(id string) string {
 		return "swap_readahead"
 	case "tcp.congestion":
 		return "tcp_congestion"
+	case "vm.swappiness":
+		return "zram_swappiness"
+	case "gpu_max":
+		return id
+	}
+	if cpuPolicy(id) != "" {
+		return id
 	}
 	if strings.HasPrefix(id, "f2fs:") {
 		return "data_fsync"
@@ -91,12 +121,13 @@ func kernelControlEnabled(c Config, id string) bool {
 }
 
 func (a *App) configuredKernelPlan(c Config) []KernelKnob {
-	plan := a.kernelPlan()
+	plan := append(a.kernelPlan(), a.manualKernelPlan()...)
 	for i := range plan {
 		plan[i].Control = kernelControlForKnob(plan[i].ID)
 		if plan[i].ID == "f2fs" {
 			plan[i].Control = "data_fsync"
 		}
+		plan[i].Manual = manualKernelControl(plan[i].Control)
 		plan[i].Enabled = kernelControlEnabled(c, plan[i].Control)
 		plan[i].Level = kernelLevel(c, plan[i].Control)
 		plan[i].Target = plan[i].Level
@@ -110,6 +141,10 @@ func (a *App) configuredKernelPlan(c Config) []KernelKnob {
 	return plan
 }
 
+func (a *App) aiKernelPlan(c Config) []KernelKnob {
+	return slices.DeleteFunc(a.configuredKernelPlan(c), func(knob KernelKnob) bool { return knob.Manual })
+}
+
 // This allowlist is shared by application and recovery. Neither RPC nor journal
 // can introduce an arbitrary writable path, shell command or kernel parameter.
 func kernelKnobPath(id string) (string, error) {
@@ -118,6 +153,13 @@ func kernelKnobPath(id string) (string, error) {
 		return "/proc/sys/vm/page-cluster", nil
 	case "tcp.congestion":
 		return "/proc/sys/net/ipv4/tcp_congestion_control", nil
+	case "vm.swappiness":
+		return "/proc/sys/vm/swappiness", nil
+	case "gpu_max":
+		return "/sys/class/kgsl/kgsl-3d0/devfreq/max_freq", nil
+	}
+	if name := cpuPolicy(id); name != "" {
+		return "/sys/devices/system/cpu/cpufreq/" + name + "/scaling_max_freq", nil
 	}
 	if name, ok := strings.CutPrefix(id, "f2fs:"); ok && blockNameRE.MatchString(name) {
 		return "/sys/fs/f2fs/" + name + "/min_fsync_blocks", nil
@@ -138,6 +180,12 @@ func validKernelValue(id, value string) bool {
 	}
 	if id == "vm.page-cluster" {
 		return n >= 0 && n <= 31
+	}
+	if id == "vm.swappiness" {
+		return n >= 0 && n <= 200
+	}
+	if id == "gpu_max" || cpuPolicy(id) != "" {
+		return n > 0 && uint64(n) <= 4294967295
 	}
 	return n >= 0 && uint64(n) <= 4294967295
 }
@@ -242,6 +290,49 @@ func (a *App) dataF2FS() string {
 	return found
 }
 
+func (a *App) frequencyKnob(id string) KernelKnob {
+	knob := KernelKnob{ID: id, Label: "GPU Adreno · xung tối đa (Hz)", Levels: []string{"stock"}, State: "unsupported",
+		Detail: "Chọn xung tối đa từ danh sách driver. Bấm Áp dụng kernel ngay để ghi trong phiên khởi động này."}
+	node, _ := kernelKnobPath(id)
+	base := path.Dir(node)
+	minNode, table := "min_freq", "available_frequencies"
+	if policy := cpuPolicy(id); policy != "" {
+		minNode, table = "scaling_min_freq", "scaling_available_frequencies"
+		knob.Label = "CPU " + policy + " · xung tối đa (kHz)"
+	}
+	current, err := a.readKernelKnob(id)
+	if err != nil {
+		return knob
+	}
+	knob.Current = current
+	maximum, _ := strconv.Atoi(current)
+	minimum, err := strconv.Atoi(a.readSystem(base + "/" + minNode))
+	if err != nil || minimum < 0 || minimum > maximum {
+		return knob
+	}
+	var frequencies []int
+	for _, value := range strings.Fields(a.readSystem(base + "/" + table)) {
+		if !validKernelValue(id, value) {
+			continue
+		}
+		frequency, _ := strconv.Atoi(value)
+		if frequency >= minimum && frequency <= maximum {
+			frequencies = append(frequencies, frequency)
+		}
+	}
+	sort.Ints(frequencies)
+	for _, frequency := range frequencies {
+		level := strconv.Itoa(frequency)
+		if !hasLevel(knob, level) {
+			knob.Levels = append(knob.Levels, level)
+		}
+	}
+	if hasLevel(knob, current) {
+		knob.State = "available"
+	}
+	return knob
+}
+
 func (a *App) kernelPlan() []KernelKnob {
 	knobs := []KernelKnob{
 		{ID: "vm.page-cluster", Label: "ZRAM: đọc từng trang swap", Target: "0", State: "unsupported", Detail: "Chỉ áp dụng khi swap đang hoạt động hoàn toàn trên ZRAM. Giảm đọc đón, có thể tăng số lần page fault."},
@@ -278,7 +369,28 @@ func (a *App) kernelPlan() []KernelKnob {
 	return knobs
 }
 
-func (a *App) tuneKernel(ctx context.Context, c Config, j *Journal) error {
+func (a *App) manualKernelPlan() []KernelKnob {
+	swap := KernelKnob{ID: "vm.swappiness", Label: "ZRAM: swappiness", Levels: []string{"stock"}, State: "unsupported",
+		Detail: "Điều chỉnh mức ưu tiên swap khi máy chỉ dùng ZRAM. Bấm Áp dụng kernel ngay để ghi trong phiên khởi động này."}
+	if current, err := a.readKernelKnob(swap.ID); err == nil {
+		swap.Current = current
+		if a.onlyZRAMSwap() {
+			swap.Levels = append(swap.Levels, "60", "100", "120")
+			swap.State = "available"
+		}
+	}
+	knobs := []KernelKnob{swap}
+	policies, _ := os.ReadDir(a.system("/sys/devices/system/cpu/cpufreq"))
+	for _, policy := range policies {
+		if cpuPolicyRE.MatchString(policy.Name()) {
+			knobs = append(knobs, a.frequencyKnob("cpu_max:"+policy.Name()))
+		}
+	}
+	knobs = append(knobs, a.frequencyKnob("gpu_max"))
+	return knobs
+}
+
+func (a *App) tuneKernel(ctx context.Context, c Config, j *Journal, manual bool) error {
 	if !c.KernelTuning {
 		return a.restoreEntries(ctx, j, func(e Entry) bool { return e.Kind == "kernel" })
 	}
@@ -312,7 +424,7 @@ func (a *App) tuneKernel(ctx context.Context, c Config, j *Journal) error {
 	}
 	pressureChecked := false
 	for _, knob := range plan {
-		if knob.State != "available" || !knob.Enabled || knob.Level == "stock" {
+		if knob.State != "available" || !knob.Enabled || knob.Level == "stock" || (knob.Manual && !manual) {
 			continue
 		}
 		// Existing entries passed the preflight above. Never fight subsequent
@@ -323,7 +435,7 @@ func (a *App) tuneKernel(ctx context.Context, c Config, j *Journal) error {
 				owned = true
 			}
 		}
-		if !owned {
+		if !owned && knob.Current != knob.Target {
 			if !pressureChecked {
 				if err := a.pressureReady(ctx); err != nil {
 					return err

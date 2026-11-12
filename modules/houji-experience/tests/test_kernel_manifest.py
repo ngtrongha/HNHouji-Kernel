@@ -78,7 +78,7 @@ class KernelManifestTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     binding.manifest(raw, binary, rev)
 
-    def test_installer_wires_metadata_and_skips_conflicting_helper(self):
+    def test_installer_wires_metadata_and_retires_old_helper(self):
         bash = "C:/Program Files/Git/bin/bash.exe" if os.name == "nt" else shutil.which("bash")
         if not bash:
             self.skipTest("bash is required")
@@ -89,10 +89,24 @@ class KernelManifestTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             generated = (root / "anykernel.sh").read_text()
             self.assertIn("/data/adb/houji-kernel/manifest.json.tmp", generated)
-            self.assertIn("/data/adb/modules/houji_experience", generated)
-            self.assertIn("legacy helper skipped", generated)
+            self.assertIn("/data/adb/houji-kernel/houji-notification-helper.sh.disabled", generated)
+            self.assertNotIn("houji-notification-helper.sh\" >", generated)
+            self.assertFalse((root / "houji-notification-helper.sh").exists())
             checked = subprocess.run([bash, "-n", (root / "anykernel.sh").as_posix()], capture_output=True, text=True)
             self.assertEqual(checked.returncode, 0, checked.stderr)
+            helper = root / "service.d/houji-notification-helper.sh"
+            backup = root / "houji-kernel/houji-notification-helper.sh.disabled"
+            helper.parent.mkdir()
+            helper.write_text("legacy contents", encoding="utf-8")
+            retirement = generated.split("# Keep the backup outside service.d", 1)[1].split("# Publish build identity", 1)[0]
+            script = "ui_print() { :; }\n# Keep the backup outside service.d" + retirement.replace("/data/adb/", "./")
+            subprocess.run([bash, "-ec", script], cwd=root, check=True)
+            self.assertFalse(helper.exists())
+            self.assertEqual(backup.read_text(encoding="utf-8"), "legacy contents")
+            helper.write_text("another helper", encoding="utf-8")
+            subprocess.run([bash, "-ec", script], cwd=root, check=True)
+            self.assertEqual(helper.read_text(encoding="utf-8"), "another helper")
+            self.assertEqual(backup.read_text(encoding="utf-8"), "legacy contents")
 
 if __name__ == "__main__":
     unittest.main()

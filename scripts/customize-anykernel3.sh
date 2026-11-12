@@ -3,7 +3,6 @@ set -euo pipefail
 
 AK3_DIR="${1:-./AnyKernel3}"
 KERNEL_VERSION="${2:-6.1}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [ ! -d "$AK3_DIR" ]; then
   echo "[-] AnyKernel3 directory not found at $AK3_DIR, skipping customization."
@@ -90,27 +89,23 @@ ui_print " "
 EOF
   fi
 
-  # 4. Wire Xiaomi 14 notification keeper if 6.1
-  HELPER_SRC="$SCRIPT_DIR/houji-notification-helper.sh"
-  if [ "$KERNEL_VERSION" = "6.1" ] && [ -f "$HELPER_SRC" ]; then
-    tr -d '\r' < "$HELPER_SRC" > "$AK3_DIR/houji-notification-helper.sh"
-    chmod +x "$AK3_DIR/houji-notification-helper.sh" || true
+  # 4. Retire the previous helper when recovery can access /data.
+  if [ "$KERNEL_VERSION" = "6.1" ]; then
     cat << 'EOF' >> "$AK3_DIR/anykernel.sh"
 
-# Xiaomi 14 (houji) notification & performance helper auto-install
-if [ -f "$home/houji-notification-helper.sh" ]; then
-  if [ -d /data/adb/modules/houji_experience ] || [ -f /data/adb/houji-experience/config.json ]; then
-    ui_print "  -> Houji Experience manages runtime settings; legacy helper skipped."
+# Keep the backup outside service.d, where executable files can run at boot.
+houji_helper=/data/adb/service.d/houji-notification-helper.sh
+houji_backup=/data/adb/houji-kernel/houji-notification-helper.sh.disabled
+if [ -f "$houji_helper" ]; then
+  if mkdir -p /data/adb/houji-kernel && [ ! -e "$houji_backup" ] && [ ! -L "$houji_backup" ] &&
+     mv "$houji_helper" "$houji_backup"; then
+    ui_print "  -> Previous Houji helper moved out of service.d."
   else
-  ui_print "  -> Installing Xiaomi 14 performance & notification helper..."
-  mkdir -p /data/adb/service.d
-  tr -d '\r' < "$home/houji-notification-helper.sh" > /data/adb/service.d/houji-notification-helper.sh
-  chmod 755 /data/adb/service.d/houji-notification-helper.sh
-  ui_print "  -> Performance & notification helper installed successfully."
+    ui_print "  -> Previous helper still present. Use Houji Experience to retire it."
   fi
 fi
 EOF
-    echo "[+] Wired houji-notification-helper.sh into AnyKernel3"
+    echo "[+] Added recovery-time retirement for the previous Houji helper"
   fi
 
   if [ "$KERNEL_VERSION" = "6.1" ]; then

@@ -268,7 +268,13 @@ func learningHash(c LearningConfig) string { b, _ := json.Marshal(c); return dig
 func (a *App) validateSettingsTarget(ctx context.Context, c Config) error {
 	writes := false
 	if c.KernelTuning {
-		for _, id := range []string{"swap_readahead", "tcp_congestion", "data_fsync"} {
+		controls := []string{"swap_readahead", "tcp_congestion", "data_fsync"}
+		for id := range c.KernelLevels {
+			if manualKernelControl(id) {
+				controls = append(controls, id)
+			}
+		}
+		for _, id := range controls {
 			if kernelControlEnabled(c, id) && kernelLevel(c, id) != "stock" {
 				writes = true
 				if !a.levelAvailable(c, id, kernelLevel(c, id)) {

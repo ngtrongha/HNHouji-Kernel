@@ -26,8 +26,17 @@ tự hoạt động khi kernel xác minh đạt; AI vẫn tùy chọn. Module gi
 
 Preset Hằng ngày ghi `vm.page-cluster=0` khi chỉ có ZRAM swap, chọn TCP BBR
 nếu kernel cung cấp, và đặt `min_fsync_blocks=20` đúng `/data` F2FS nếu hỗ trợ.
-Mỗi mục có journal/đọc lại/hoàn tác và trạng thái trong WebUI. Không đổi
-xung/thermal/WALT/HZ hay kích thước/bộ nén ZRAM. Hiệu quả cần đo trên houji.
+Mỗi mục có journal, đọc lại, hoàn tác và trạng thái trong WebUI.
+
+Từ **0.6.3-preview**, nút **Áp dụng kernel ngay** ở Tổng quan ghi preset đã
+chọn và đọc lại giá trị trực tiếp, kể cả khi watcher chưa chạy. Cần ZIP
+module paired đúng bản kernel, hoặc sidecar khớp với ZIP generic. Trạng thái
+`applied` nghĩa là module đã ghi, còn `already-set` nghĩa là giá trị đã đúng.
+
+CPU có trần xung riêng theo từng policy và GPU Adreno có trần xung từ driver.
+`vm.swappiness` có mức 60/100/120 khi toàn bộ swap đang dùng là ZRAM.
+Các mục mới mặc định **Gốc** và chỉ áp dụng thủ công trong phiên khởi động hiện
+tại. Mức xung phải có trong bảng driver và nằm trong giới hạn đang đọc được.
 
 Từ **0.1.3**, module paired dùng `kernel.json` nhúng trong ZIP để kiểm tra GNU
 build ID và toàn bộ hash IKCONFIG thực, nên thiếu sidecar trong `/data/adb`
@@ -36,9 +45,10 @@ khớp và cấu hình bật SUSFS SPOOF_UNAME; báo cáo hiện cả hai releas
 vẫn cần sidecar. Metadata thiếu/sai, config hoặc build ID không khớp đều chỉ
 chẩn đoán; không tự dựng metadata từ runtime.
 
-Nếu helper cũ được AnyKernel3 cài sẵn, installer sao lưu/vô hiệu hóa tên thực
-thi của helper; cần reboot. Các thiết lập Android cũ không có bản gốc lưu sẵn
-không được tự đoán/reset về stock.
+AnyKernel3 mới chuyển helper cũ ra khỏi `service.d` nếu recovery ghi được
+`/data`. Khi chỉ cập nhật module, installer vẫn sao lưu và vô hiệu hóa helper.
+Khởi động lại sau khi xử lý. Các thiết lập Android cũ không có bản gốc lưu sẵn
+được giữ nguyên.
 
 Khi cần tắt, dùng **Tắt & hoàn tác**. Gỡ module sẽ xóa khóa API; hook cleanup
 chỉ tồn tại thêm nếu journal chưa khôi phục xong. Không xóa toàn bộ `/data/adb`.

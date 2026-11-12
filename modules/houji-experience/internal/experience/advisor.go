@@ -29,7 +29,7 @@ func (a *App) advisorEvidence(ctx context.Context, at time.Time) (map[string]any
 	core, _ := a.config()
 	sync := a.KernelSync(ctx)
 	result["kernel_compatibility"] = map[string]any{"ready": sync.Ready, "state": sync.State}
-	result["kernel_controls"] = a.configuredKernelPlan(core)
+	result["kernel_controls"] = a.aiKernelPlan(core)
 	result["system_settings_read_only"] = a.systemSettingsStatus(ctx, core)
 	result["battery"] = a.batteryCheck()
 	result["battery_snapshot"] = a.batterySnapshotView()
@@ -91,7 +91,7 @@ func (a *App) advisorWithTransport(ctx context.Context, prompt, goal string, mes
 	learning, learningErr := a.learningConfig()
 	evidence, legend := a.advisorEvidence(ctx, time.Now())
 	payload := map[string]any{"goal": advisorGoals[goal], "question": prompt, "conversation": messages, "evidence": evidence, "automatic_run": false}
-	result := a.requestAI(ctx, "", false, usefulAdvisorInstruction, pretty(payload), proposalSchema(legend, base, a.configuredKernelPlan(base), a.KernelSync(ctx).Ready, false), tr)
+	result := a.requestAI(ctx, "", false, usefulAdvisorInstruction, pretty(payload), proposalSchema(legend, base, a.aiKernelPlan(base), a.KernelSync(ctx).Ready, false), tr)
 	result["app_legend"] = legend
 	if baseErr == nil && learningErr == nil {
 		result = a.attachProposal(result, legend, base, learning.Generation, time.Now())

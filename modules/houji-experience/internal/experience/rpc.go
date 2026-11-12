@@ -161,6 +161,27 @@ func (a *App) dispatch(ctx context.Context, r Request) (any, error) {
 		c = disabledConfig()
 	}
 	switch r.Action {
+	case "kernel_apply":
+		if e = a.manualSettingsReady(ctx, c); e != nil {
+			return nil, e
+		}
+		if !c.KernelTuning {
+			return nil, errors.New("kernel-preset-disabled")
+		}
+		j, err := a.journal()
+		if err != nil {
+			return nil, err
+		}
+		if boot := a.bootID(); boot == "" || (len(j.Entries) != 0 && j.Boot != boot) {
+			return nil, errors.New("kernel-recovery-pending")
+		}
+		if err = a.tuneKernel(ctx, c, &j, true); err != nil {
+			if err.Error() == "proposal-pressure" || err.Error() == "proposal-pressure-unknown" {
+				return nil, err
+			}
+			return nil, errors.Join(err, a.restoreEntries(ctx, &j, func(e Entry) bool { return e.Kind == "kernel" }))
+		}
+		return a.kernelTuningStatus(ctx, c, a.KernelSync(ctx), j), nil
 	case "kernel_level_set", "kernel_control_set", "system_setting_set", "boot_notify_set":
 		if !a.ownerUser(ctx) {
 			return nil, errors.New("owner-user-only")

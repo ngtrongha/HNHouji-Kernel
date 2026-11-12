@@ -17,6 +17,7 @@ async function mockBridge(page) {
       const encoded = JSON.parse(options).env.HOUJI_REQUEST_B64;
       const req = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(encoded), c => c.charCodeAt(0))));
       const record={command,req};window.requests.push(record);
+      if(req.action==='kernel_apply'&&window.kernelMismatch){setTimeout(()=>window[callback](1,JSON.stringify({ok:false,error:'proposal-kernel-mismatch'}),''),0);return;}
       if(req.action==='export'&&window.exportFailure){setTimeout(()=>window[callback](1,JSON.stringify({ok:false,error:'cannot access Downloads/HNHouji; unlock shared storage and try again'}),''),0);return;}
       let data = {};
       switch (req.action) {
@@ -24,6 +25,7 @@ async function mockBridge(page) {
         case 'battery_snapshot_start': case 'battery_snapshot_status': data={id:'battery-01',state:window.batteryError?'failed':'completed',error:window.batteryError,result:{source:'android-checkin-since-stats-start',anchor:'1:123456789',screen_off_seconds:3600,screen_off_drop_percent:2,percent_per_hour:2}};break;
         case 'kernel_level_set': config.kernel_levels[req.control]=req.level;break;
         case 'kernel_control_set': config.kernel_controls[req.control]=req.enabled;break;
+        case 'kernel_apply': data={knobs:[{state:'applied'},{state:'already-set'},{state:'unsupported'}]};break;
         case 'system_settings_status': data=[{id:'blur',label:'Blur giao diện',choice:config.system_settings.blur || 'stock',choices:['stock','off'],state:config.system_settings.blur==='off'?'applied':'available',current:[config.system_settings.blur==='off'?'1':'0']},{id:'peak_refresh',label:'Giới hạn tần số quét',choice:config.system_settings.peak_refresh || 'stock',choices:['stock','60','120'],state:'available',current:['120']}];break;
         case 'system_setting_set': config.system_settings[req.id]=req.choice;break;
         case 'boot_notify_set': config.boot_notify=req.enabled;break;
@@ -246,6 +248,8 @@ test('kernel preset shows values, toggles separately and explains build mismatch
   await expect(page.locator('#kernel-tuning')).toBeChecked();
   await expect(page.locator('#kernel-knobs')).toContainText('Module đã áp dụng');
   await expect(page.locator('#kernel-knobs')).toContainText('Hiện tại: 0 · Mục tiêu: 0 · Ban đầu: 3');
+  await page.getByRole('button',{name:'Áp dụng kernel ngay'}).click();
+  await expect(page.locator('#notification')).toContainText('Module đang áp dụng 1 mục, 1 mục đã đúng giá trị');
   await page.locator('#kernel-tuning').uncheck();
   await expect.poll(()=>page.evaluate(()=>window.requests.some(x=>x.req.action==='kernel_tuning_set'&&x.req.enabled===false))).toBeTruthy();
   await expect(page.locator('#kernel-knobs')).toContainText('Hiện tại: 3');
@@ -255,6 +259,8 @@ test('kernel preset shows values, toggles separately and explains build mismatch
   await expect(page.locator('#profile-name')).toHaveText('Quan sát');
   await expect(page.locator('#profile-detail')).toContainText('Build ID không khớp');
   await expect(page.locator('#kernel-sync')).toContainText('chỉ chẩn đoán');
+  await page.getByRole('button',{name:'Áp dụng kernel ngay'}).click();
+  await expect(page.locator('#notification')).toContainText('Build ID không khớp');
 });
 
 test('mobile tabs, app rules, optional AI and safe output', async ({ page }) => {

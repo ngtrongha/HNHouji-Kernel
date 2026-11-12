@@ -24,6 +24,9 @@ func proposalSchema(legend []HabitApp, c Config, knobs []KernelKnob, ready, auto
 	}
 	supported := false
 	for _, knob := range knobs {
+		if !aiKernelControl(knob.Control) {
+			continue
+		}
 		if automatic && (!c.KernelTuning || !kernelControlEnabled(c, knob.Control)) {
 			continue
 		}
