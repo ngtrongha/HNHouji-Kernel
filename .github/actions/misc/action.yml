@@ -16,6 +16,9 @@ inputs:
   variant:
     description: 'Build variant (Normal, Bypass, Wild, boot-time)'
     required: true
+  preserve_zram_defaults:
+    description: 'Keep the ACK ZRAM configuration for the houji LTS baseline'
+    default: 'false'
 
 runs:
   using: "composite"
@@ -30,9 +33,6 @@ runs:
           CONFIG_KALLSYMS=y
           CONFIG_KALLSYMS_ALL=y
           CONFIG_MQ_IOSCHED_DEADLINE=y
-          CONFIG_ZRAM_DEF_COMP_LZ4=y
-          CONFIG_ZRAM_WRITEBACK=y
-          CONFIG_ZRAM_MEMORY_TRACKING=y
           CONFIG_F2FS_FS_COMPRESSION=y
           CONFIG_EXFAT_FS=y
           CONFIG_VFAT_FS=y
@@ -40,4 +40,12 @@ runs:
           CONFIG_PSTORE_CONSOLE=y
           CONFIG_PSTORE_RAM=y
           CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y
-          
+
+    - name: Enable optional ZRAM settings
+      if: inputs.preserve_zram_defaults != 'true'
+      uses: ./.github/actions/set-kernel-config
+      with:
+        config_list: |
+          CONFIG_ZRAM_DEF_COMP_LZ4=y
+          CONFIG_ZRAM_WRITEBACK=y
+          CONFIG_ZRAM_MEMORY_TRACKING=y

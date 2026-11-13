@@ -102,6 +102,9 @@ You can trigger a custom build directly in GitHub Actions:
    - **Feature Set**: `All` (or custom subset)
 4. Download the generated `AnyKernel3.zip` from the workflow summary or releases.
 
+For **BakaSU**, choose that root flavor with **SUSFS** disabled. This selects
+BakaSU's GKI tracepoint hooks and the Manager from the same upstream commit.
+
 For custom forks and full configuration options, refer to [Build From Fork](docs/build-from-fork.md).
 
 ---

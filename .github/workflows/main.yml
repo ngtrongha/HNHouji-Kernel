@@ -80,6 +80,7 @@ on:
         type: choice
         options:
           - KernelSU-Next
+          - BakaSU
           - KernelSU
           - ReSukiSU
           - SukiSU-Ultra
@@ -294,7 +295,7 @@ jobs:
           # No Root / All) to internal root-setup flavors (next / kernelsu /
           # resukisu / sukisu-ultra / kowsu / none). 'All' emits a matrix of
           # the three core root flavors plus each pinned commit; SukiSU-Ultra,
-          # KowSU, and No Root are opt-in only and never part of 'All'.
+          # KowSU, BakaSU, and No Root are opt-in only and never part of 'All'.
           #
           # kernelsu, resukisu, and sukisu-ultra pin in verified mode;
           # KernelSU-Next (next) always builds at latest.
@@ -347,6 +348,16 @@ jobs:
               echo "root_flavor=next" >> "$GITHUB_OUTPUT"
               emit root_commit "$NEXT_COMMIT"
               ROOT_MATRIX="[$(mk_entry next KernelSU-Next "$NEXT_COMMIT")]"
+              ;;
+            BakaSU)
+              if [ "$SCHED_SUSFS" = "true" ]; then
+                echo "ERROR: Select SUSFS=false for BakaSU's GKI tracepoint build." >&2
+                exit 1
+              fi
+              BAKASU_COMMIT="$(resolve_sha https://github.com/Baka-SU/BakaSU.git refs/heads/main)"
+              echo "root_flavor=bakasu" >> "$GITHUB_OUTPUT"
+              emit root_commit "$BAKASU_COMMIT"
+              ROOT_MATRIX="[$(mk_entry bakasu BakaSU "$BAKASU_COMMIT")]"
               ;;
             ReSukiSU)
               echo "root_flavor=resukisu" >> "$GITHUB_OUTPUT"
@@ -442,7 +453,7 @@ jobs:
           # No Root ships no manager.
           resolve_one() { # flavor
             local flavor="$1"
-            local owner repo wf stock
+            local owner repo wf stock run_id
             case "$flavor" in
               next)
                 owner="KernelSU-Next"; repo="KernelSU-Next"; wf="build-manager-ci.yml"
@@ -465,6 +476,18 @@ jobs:
                   "$flavor" "$owner" "$repo" "$run_id" "$stock"
                 ;;
 
+              bakasu)
+                owner="Baka-SU"; repo="BakaSU"; wf="build-manager.yml"
+                stock="${{ steps.resolve.outputs.root_commit }}"
+                run_id=$(gh api "repos/${owner}/${repo}/actions/workflows/${wf}/runs?head_sha=${stock}&status=success" \
+                  --jq '.workflow_runs[0].id // empty')
+                if [[ -z "$run_id" ]]; then
+                  echo "ERROR: No successful BakaSU Manager build for $stock" >&2
+                  exit 1
+                fi
+                printf '{"flavor":"%s","owner":"%s","repo":"%s","source":"run","run_id":%s,"stock":"%s","want":"Manager-release"}' \
+                  "$flavor" "$owner" "$repo" "$run_id" "$stock"
+                ;;
               kernelsu)
                 owner="tiann"; repo="KernelSU"; wf="build-manager.yml"
                 stock=$(git ls-remote https://github.com/tiann/KernelSU.git refs/heads/main | awk '{print $1; exit}')
@@ -554,6 +577,7 @@ jobs:
           case "${FLAVORS}" in
             All*) LIST=$(jq -c -n '[inputs]' <<< "$(resolve_one next)"$'\n'"$(resolve_one kernelsu)"$'\n'"$(resolve_one resukisu)") ;;
             KernelSU-Next) LIST=$(jq -c -n '[inputs]' <<< "$(resolve_one next)") ;;
+            BakaSU) LIST=$(jq -c -n '[inputs]' <<< "$(resolve_one bakasu)") ;;
             KernelSU) LIST=$(jq -c -n '[inputs]' <<< "$(resolve_one kernelsu)") ;;
             ReSukiSU) LIST=$(jq -c -n '[inputs]' <<< "$(resolve_one resukisu)") ;;
             SukiSU-Ultra) LIST=$(jq -c -n '[inputs]' <<< "$(resolve_one sukisu-ultra)") ;;
@@ -704,6 +728,11 @@ jobs:
               fi
             )
           done
+          if echo "$MANAGER_LIST" | jq -e 'any(.[]; .flavor == "bakasu")' >/dev/null &&
+             ! grep -q '^Baka-SU|BakaSU|' "$MANIFEST"; then
+            echo "ERROR: The matching BakaSU Manager artifact has no APK." >&2
+            exit 1
+          fi
           # Filter ReSukiSU to only release universal and universal spoofed (drop debug/non-universal)
           if grep -q "ReSukiSU|ReSukiSU|" "$MANIFEST" 2>/dev/null; then
             tmp_manifest="${MANIFEST}.filtered"
@@ -1294,6 +1323,7 @@ jobs:
         echo "release_title=$release_title" >> "$GITHUB_OUTPUT"
 
     - name: Extract KernelSU Version Info
+      if: inputs.root_flavor != 'BakaSU'
       id: ksu_version
       env:
         GH_TOKEN: ${{ github.token }}
@@ -1392,7 +1422,7 @@ jobs:
         # resolve-sources outputs silently expand to empty when the job
         # lacks it in `needs` (r20 shipped with _n/a_ everywhere). Fail
         # fast instead of publishing thin notes.
-        if grep -q '_n/a_' release_body.md; then
+        if [ "${{ inputs.use_susfs }}" = "true" ] && grep -q '_n/a_' release_body.md; then
           echo "ERROR: release_body.md contains unresolved _n/a_ entries:" >&2
           grep '_n/a_' release_body.md >&2
           exit 1
@@ -1734,12 +1764,12 @@ jobs:
               _next_url="https://github.com/pershoot/KernelSU-Next/commit/"
           else:
               _next_url="https://github.com/KernelSU-Next/KernelSU-Next/commit/"
-          _root_urls={"next":_next_url,"kernelsu":"https://github.com/tiann/KernelSU/commit/","resukisu":"https://github.com/ReSukiSU/ReSukiSU/commit/","sukisu-ultra":"https://github.com/SukiSU-Ultra/SukiSU-Ultra/commit/","kowsu":"https://github.com/KOWX712/KernelSU/commit/"}
-          _root_commits={"next":_rmatrix.get("next","") or kernelsu_commit,"kernelsu":_rmatrix.get("kernelsu","") or ksu_commit,"resukisu":_rmatrix.get("resukisu","") or resukisu_commit,"sukisu-ultra":_rmatrix.get("sukisu-ultra","") or sukisu_ultra_commit,"kowsu":_rmatrix.get("kowsu","") or kowsu_commit}
+          _root_urls={"next":_next_url,"bakasu":"https://github.com/Baka-SU/BakaSU/commit/","kernelsu":"https://github.com/tiann/KernelSU/commit/","resukisu":"https://github.com/ReSukiSU/ReSukiSU/commit/","sukisu-ultra":"https://github.com/SukiSU-Ultra/SukiSU-Ultra/commit/","kowsu":"https://github.com/KOWX712/KernelSU/commit/"}
+          _root_commits={"next":_rmatrix.get("next","") or kernelsu_commit,"bakasu":_rmatrix.get("bakasu",""),"kernelsu":_rmatrix.get("kernelsu","") or ksu_commit,"resukisu":_rmatrix.get("resukisu","") or resukisu_commit,"sukisu-ultra":_rmatrix.get("sukisu-ultra","") or sukisu_ultra_commit,"kowsu":_rmatrix.get("kowsu","") or kowsu_commit}
           _flavors0=[m.get("flavor","") for m in parse_managers(env("MANAGER_LIST","")) if m.get("flavor","")]
           if not _flavors0:
-              _flavors0={"KernelSU-Next":["next"],"KernelSU":["kernelsu"],"ReSukiSU":["resukisu"],"SukiSU-Ultra":["sukisu-ultra"],"KowSU":["kowsu"],"No Root":[],"All":["next","kernelsu","resukisu"]}.get(root,["next","kernelsu","resukisu"])
-          _labels0={"next":"KernelSU-Next","kernelsu":"KernelSU","resukisu":"ReSukiSU","sukisu-ultra":"SukiSU-Ultra","kowsu":"KowSU"}
+              _flavors0={"KernelSU-Next":["next"],"BakaSU":["bakasu"],"KernelSU":["kernelsu"],"ReSukiSU":["resukisu"],"SukiSU-Ultra":["sukisu-ultra"],"KowSU":["kowsu"],"No Root":[],"All":["next","kernelsu","resukisu"]}.get(root,["next","kernelsu","resukisu"])
+          _labels0={"next":"KernelSU-Next","bakasu":"BakaSU","kernelsu":"KernelSU","resukisu":"ReSukiSU","sukisu-ultra":"SukiSU-Ultra","kowsu":"KowSU"}
           _rc=[]
           for _fl0 in _flavors0:
               _c=_root_commits.get(_fl0,"")
@@ -1761,8 +1791,9 @@ jobs:
           ak=env("ANYKERNEL3_COMMIT","")
           ds=env("DROIDSPACES_COMMIT","")
           lines.append("")
-          lines.append("## SUSFS commits")
-          lines.append("")
+          if env("USE_SUSFS","true")=="true":
+              lines.append("## SUSFS commits")
+              lines.append("")
           all_variants=["android12-5.10","android13-5.10","android13-5.15","android14-5.15","android14-6.1","android15-6.6","android16-6.12"]
           def kbv_to_variant(kbv):
               if ".x-android" in kbv:
@@ -1776,14 +1807,13 @@ jobs:
           sus_map={"android12-5.10":env("SUSFS_ANDROID12_5_10",""),"android13-5.10":env("SUSFS_ANDROID13_5_10",""),"android13-5.15":env("SUSFS_ANDROID13_5_15",""),"android14-5.15":env("SUSFS_ANDROID14_5_15",""),"android14-6.1":env("SUSFS_ANDROID14_6_1",""),"android15-6.6":env("SUSFS_ANDROID15_6_6",""),"android16-6.12":env("SUSFS_ANDROID16_6_12","")}
           sus_map_resukisu={"android12-5.10":env("SUSFS_ANDROID12_5_10_RESUKISU",""),"android13-5.10":env("SUSFS_ANDROID13_5_10_RESUKISU",""),"android13-5.15":env("SUSFS_ANDROID13_5_15_RESUKISU",""),"android14-5.15":env("SUSFS_ANDROID14_5_15_RESUKISU",""),"android14-6.1":env("SUSFS_ANDROID14_6_1_RESUKISU",""),"android15-6.6":env("SUSFS_ANDROID15_6_6_RESUKISU",""),"android16-6.12":env("SUSFS_ANDROID16_6_12_RESUKISU","")}
           sus_map_sukisu_ultra={"android12-5.10":env("SUSFS_ANDROID12_5_10_SUKISU_ULTRA",""),"android13-5.10":env("SUSFS_ANDROID13_5_10_SUKISU_ULTRA",""),"android13-5.15":env("SUSFS_ANDROID13_5_15_SUKISU_ULTRA",""),"android14-5.15":env("SUSFS_ANDROID14_5_15_SUKISU_ULTRA",""),"android14-6.1":env("SUSFS_ANDROID14_6_1_SUKISU_ULTRA",""),"android15-6.6":env("SUSFS_ANDROID15_6_6_SUKISU_ULTRA",""),"android16-6.12":env("SUSFS_ANDROID16_6_12_SUKISU_ULTRA","")}
-          _flavors=[m.get("flavor","") for m in parse_managers(env("MANAGER_LIST","")) if m.get("flavor","")]
-          if not _flavors:
-              _flavors={"KernelSU-Next":["next"],"KernelSU":["kernelsu"],"ReSukiSU":["resukisu"],"SukiSU-Ultra":["sukisu-ultra"],"KowSU":["kowsu"],"No Root":[],"All":["next","kernelsu","resukisu"]}.get(root,["next","kernelsu","resukisu"])
-          _labels={"next":"KernelSU-Next","kernelsu":"KernelSU","resukisu":"ReSukiSU","sukisu-ultra":"SukiSU-Ultra","kowsu":"KowSU"}
+          _flavors=_flavors0 if env("USE_SUSFS","true")=="true" else []
+          _labels=_labels0
           _susfs_url="https://gitlab.com/simonpunk/susfs4ksu"
-          lines.append("| SUSFS branch |" + "".join(f" {_labels.get(_fl,_fl)} |" for _fl in _flavors))
-          lines.append("|---" * (len(_flavors) + 1) + "|")
-          for v in variants:
+          if _flavors:
+              lines.append("| SUSFS branch |" + "".join(f" {_labels.get(_fl,_fl)} |" for _fl in _flavors))
+              lines.append("|---" * (len(_flavors) + 1) + "|")
+          for v in (variants if _flavors else []):
               _row=f"| gki-{v} |"
               for _fl in _flavors:
                   # KowSU never ships SUSFS: render n/a rather than shared pins.

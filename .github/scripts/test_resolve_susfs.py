@@ -84,7 +84,7 @@ class ResolverTests(unittest.TestCase):
 
 
 class WorkflowTests(unittest.TestCase):
-    def run_resolution(self, mode="latest", selection="6.1.x-android14", enabled="true", event="workflow_dispatch", fail=False):
+    def run_resolution(self, mode="latest", selection="6.1.x-android14", enabled="true", event="workflow_dispatch", fail=False, flavor="KernelSU-Next"):
         workflow = yaml.safe_load((ROOT / ".github/workflows/main.yml").read_text(encoding="utf-8"))
         steps = workflow["jobs"]["resolve-sources"]["steps"]
         step = next(step for step in steps if step.get("id") == "resolve")
@@ -93,8 +93,8 @@ class WorkflowTests(unittest.TestCase):
             "inputs.commit_mode || 'latest'": mode,
             "github.event_name": event,
             "inputs.use_susfs": enabled,
-            "inputs.root_flavor || 'All (KernelSU-Next + KernelSU + ReSukiSU)'": "KernelSU-Next",
-            "inputs.root_flavor": "KernelSU-Next",
+            "inputs.root_flavor || 'All (KernelSU-Next + KernelSU + ReSukiSU)'": flavor,
+            "inputs.root_flavor": flavor,
             "inputs.kernel_build_version || 'All'": selection,
         }
         script = re.sub(r"\$\{\{\s*(.*?)\s*\}\}", lambda match: values[match[1]], step["run"])
@@ -112,7 +112,11 @@ python3() {{ printf '%s\\n' "$2" >> "$LOOKUPS"; [ "$FAIL_LOOKUP" = false ] || re
             result = subprocess.run([shutil.which("bash"), shell_file.as_posix()], env=env, capture_output=True, text=True, timeout=15)
             outputs = dict(line.split("=", 1) for line in output.read_text().splitlines()) if output.exists() else {}
             branches = lookups.read_text().splitlines() if lookups.exists() else []
-        return result, {key: value for key, value in outputs.items() if key.startswith("susfs_commit_")}, branches
+        return result, outputs, branches
+
+    @staticmethod
+    def susfs_outputs(outputs):
+        return {key: value for key, value in outputs.items() if key.startswith("susfs_commit_")}
 
     def test_latest_and_update_resolve_selected_branch_once_for_all_roots(self):
         for mode in ["latest", "update"]:
@@ -120,8 +124,8 @@ python3() {{ printf '%s\\n' "$2" >> "$LOOKUPS"; [ "$FAIL_LOOKUP" = false ] || re
                 result, outputs, branches = self.run_resolution(mode=mode)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(branches, [BRANCH])
-                self.assertEqual(len(outputs), 3)
-                self.assertEqual(set(outputs.values()), {SHA})
+                self.assertEqual(len(self.susfs_outputs(outputs)), 3)
+                self.assertEqual(set(self.susfs_outputs(outputs).values()), {SHA})
 
     def test_all_and_schedule_resolve_each_branch_once(self):
         for event in ["workflow_dispatch", "schedule"]:
@@ -130,7 +134,7 @@ python3() {{ printf '%s\\n' "$2" >> "$LOOKUPS"; [ "$FAIL_LOOKUP" = false ] || re
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(len(branches), 7)
                 self.assertEqual(len(set(branches)), 7)
-                self.assertEqual(len(outputs), 21)
+                self.assertEqual(len(self.susfs_outputs(outputs)), 21)
 
     def test_each_kernel_selection_resolves_its_own_branch(self):
         for version in ["android12-5.10", "android13-5.10", "android13-5.15", "android14-5.15", "android15-6.6", "android16-6.12"]:
@@ -139,24 +143,36 @@ python3() {{ printf '%s\\n' "$2" >> "$LOOKUPS"; [ "$FAIL_LOOKUP" = false ] || re
                 result, outputs, branches = self.run_resolution(selection=f"{kernel}.x-{android}")
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(branches, [f"gki-{version}"])
-                self.assertEqual(len(outputs), 3)
+                self.assertEqual(len(self.susfs_outputs(outputs)), 3)
 
     def test_verified_uses_pins_without_latest_lookup(self):
         result, outputs, branches = self.run_resolution(mode="verified")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(branches, [])
-        self.assertEqual(len(outputs), 3)
-        self.assertNotIn(SHA, outputs.values())
+        self.assertEqual(len(self.susfs_outputs(outputs)), 3)
+        self.assertNotIn(SHA, self.susfs_outputs(outputs).values())
 
     def test_disabled_susfs_makes_no_susfs_requests(self):
         result, outputs, branches = self.run_resolution(enabled="false")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual((outputs, branches), ({}, []))
+        self.assertEqual((self.susfs_outputs(outputs), branches), ({}, []))
+
+    def test_bakasu_uses_a_single_root_with_susfs_disabled(self):
+        result, outputs, branches = self.run_resolution(flavor="BakaSU", enabled="false")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.susfs_outputs(outputs), branches), ({}, []))
+        self.assertEqual(json.loads(outputs["root_matrix"]), [
+            {"root_flavor": "bakasu", "variant": "BakaSU", "root_commit": SHA},
+        ])
+        result, _, branches = self.run_resolution(flavor="BakaSU")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("SUSFS=false", result.stderr)
+        self.assertEqual(branches, [])
 
     def test_failed_lookup_stops_workflow_without_emitting_stale_sha(self):
         result, outputs, branches = self.run_resolution(fail=True)
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(outputs, {})
+        self.assertEqual(self.susfs_outputs(outputs), {})
         self.assertEqual(branches, [BRANCH])
 
 

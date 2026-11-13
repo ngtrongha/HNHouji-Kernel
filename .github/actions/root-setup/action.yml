@@ -2,7 +2,7 @@ name: Setup pinned root implementation
 description: Clone exactly one supported root implementation at a verified commit
 inputs:
   flavor:
-    description: 'kernelsu, next, resukisu, sukisu-ultra, or kowsu'
+    description: 'kernelsu, next, bakasu, resukisu, sukisu-ultra, or kowsu'
     required: true
   commit:
     description: 'Full immutable commit SHA'
@@ -30,6 +30,11 @@ runs:
             directory="KernelSU-Next"
             manager="KernelSU Next Manager"
             ;;
+          bakasu)
+            repo="https://github.com/Baka-SU/BakaSU.git"
+            directory="BakaSU"
+            manager="BakaSU Manager"
+            ;;
           resukisu)
             repo="https://github.com/ReSukiSU/ReSukiSU.git"
             directory="ReSukiSU"
@@ -56,7 +61,7 @@ runs:
           exit 2
         fi
 
-        for candidate in KernelSU KernelSU-Next ReSukiSU SukiSU-Ultra KowSU; do
+        for candidate in KernelSU KernelSU-Next BakaSU ReSukiSU SukiSU-Ultra KowSU; do
           if [ "$candidate" != "$directory" ] && [ -e "$candidate" ]; then
             echo "Refusing mixed root implementations: found $candidate." >&2
             exit 1
@@ -88,6 +93,9 @@ runs:
         if [ "$actual_commit" != "$expected_commit" ]; then
           echo "Root commit mismatch: expected $expected_commit, got $actual_commit." >&2
           exit 1
+        fi
+        if [ "$flavor" = bakasu ] && [ -f "$directory/.git/shallow" ]; then
+          git -C "$directory" fetch --unshallow origin
         fi
         if [ ! -f "$directory/kernel/Kconfig" ] || [ ! -f "$directory/kernel/Makefile" ]; then
           echo "Selected root checkout does not contain a kernel integration." >&2
@@ -130,6 +138,22 @@ runs:
             echo "Softened KSU config guard in $d/Kbuild"
           fi
         done
+
+    - name: Select BakaSU tracepoint hooks and its own manager
+      if: inputs.flavor == 'bakasu'
+      uses: ./.github/actions/set-kernel-config
+      with:
+        config_list: |
+          CONFIG_KSU_TRACEPOINT_HOOK=y
+          CONFIG_KSU_MULTI_MANAGER_SUPPORT=n
+
+    - name: Allow the BakaSU checkout in the Kleaf sandbox
+      if: inputs.flavor == 'bakasu'
+      shell: bash
+      working-directory: ${{ github.workspace }}/kernel
+      run: |
+        # Keep the hook checks intact. The pinned source is linked into drivers/kernelsu.
+        sed -i 's/$(error You should use $(REPO_NAME) as a git submodule instead of copying code directly)/$(warning You should use $(REPO_NAME) as a git submodule instead of copying code directly)/' BakaSU/kernel/Kbuild
 
     - name: Disable multi-manager for ReSukiSU
       if: inputs.flavor == 'resukisu'

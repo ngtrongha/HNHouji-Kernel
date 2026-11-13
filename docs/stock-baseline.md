@@ -11,6 +11,10 @@ Google ACK resolves that source prefix to
 [`78a0a76cd7b7029059bdf03eba04ebeaf9af4eed`](https://android.googlesource.com/kernel/common/+/78a0a76cd7b7029059bdf03eba04ebeaf9af4eed),
 whose Makefile reports 6.1.157.
 
+The `images/boot.img` extracted from the supplied Global firmware archive for
+HyperOS `OS3.0.305.0.WNCMIXM` has the same SHA-256. Its embedded config uses
+LZO-RLE with ZRAM writeback and memory tracking disabled.
+
 The LTS build keeps ACK `06aabb3c55412104814644e8d1b37df04940d99a`
 (6.1.177), including its complete dma-buf subsystem, F2FS layout and memory/scheduler
 code. Only these paths move from the old 6.1.138 stock pin to the new stock commit:

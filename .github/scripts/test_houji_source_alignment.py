@@ -69,6 +69,22 @@ class DisplayAlignmentTests(unittest.TestCase):
             for path in protected:
                 self.assertEqual((repo / path).read_text(), 'ACK177\n')
 
+    def test_aligned_houji_skips_generic_zram_overrides(self):
+        workflow = yaml.safe_load((ROOT / '.github/workflows/build.yml').read_text(encoding='utf-8'))
+        steps = workflow['jobs']['build-gki']['steps']
+        align = next(s for s in steps if s.get('id') == 'houji-alignment')
+        misc = next(s for s in steps if s.get('uses') == './.github/actions/misc')
+        self.assertIn('echo "applied=true" >> "$GITHUB_OUTPUT"', align['run'])
+        self.assertIn('steps.houji-alignment.outputs.applied', misc['with']['preserve_zram_defaults'])
+
+        action = yaml.safe_load((ROOT / '.github/actions/misc/action.yml').read_text(encoding='utf-8'))
+        generic, zram = action['runs']['steps']
+        self.assertNotIn('CONFIG_ZRAM', generic['with']['config_list'])
+        self.assertEqual(zram['if'], "inputs.preserve_zram_defaults != 'true'")
+        self.assertEqual(zram['with']['config_list'].splitlines(), [
+            'CONFIG_ZRAM_DEF_COMP_LZ4=y', 'CONFIG_ZRAM_WRITEBACK=y', 'CONFIG_ZRAM_MEMORY_TRACKING=y',
+        ])
+
 
 if __name__ == '__main__':
     unittest.main()

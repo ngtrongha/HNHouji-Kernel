@@ -161,6 +161,7 @@ jobs:
         os_patch_level: ${{ inputs.os_patch_level }}
 
     - name: Surgical 6.1-LTS Source Alignment for Xiaomi 14 (houji)
+      id: houji-alignment
       if: inputs.kernel_version == '6.1' && (inputs.os_patch_level == 'lts' || startsWith(inputs.os_patch_level, 'lts') || inputs.os_patch_level == '177')
       shell: bash
       working-directory: ${{ github.workspace }}/kernel/common
@@ -214,6 +215,7 @@ jobs:
         # Update environment with new aligned commit SHA
         NEW_COMMIT_SHA=$(git rev-parse HEAD)
         echo "KERNEL_SOURCE_COMMIT=$NEW_COMMIT_SHA" >> "$GITHUB_ENV"
+        echo "applied=true" >> "$GITHUB_OUTPUT"
         echo "[+] Source aligned: $(make kernelversion 2>/dev/null) + stock 6.1.157 display (commit: $NEW_COMMIT_SHA); device validation pending"
 
     - name: Set Build Timestamp from Kernel Commit
@@ -263,11 +265,11 @@ jobs:
         sublevel: ${{ steps.extract.outputs.sublevel }}
         os_patch_level: ${{ inputs.os_patch_level }}
 
-    - name: Reject KowSU with SUSFS
-      if: inputs.root_flavor == 'kowsu' && (contains(inputs.feature_set, 'SUSFS') || inputs.feature_set == 'All')
+    - name: Reject unsupported root and SUSFS combinations
+      if: (inputs.root_flavor == 'kowsu' || inputs.root_flavor == 'bakasu') && (contains(inputs.feature_set, 'SUSFS') || inputs.feature_set == 'All')
       shell: bash
       run: |
-        echo "ERROR: KowSU does not work together with SUSFS — re-run with SUSFS off." >&2
+        echo "ERROR: ${{ inputs.root_flavor }} requires SUSFS off in this workflow." >&2
         exit 1
 
     - name: Setup Selected Root Implementation
@@ -446,6 +448,8 @@ jobs:
 
     - name: Setup Misc Configs
       uses: ./.github/actions/misc
+      with:
+        preserve_zram_defaults: ${{ steps.houji-alignment.outputs.applied || 'false' }}
 
     - name: Enable BPF Stack (BTF + eBPF + FUSE-BPF)
       if: contains(inputs.feature_set, 'BPF')
@@ -749,11 +753,25 @@ jobs:
           fi
         } > "$SUMMARY_FILE"
 
+    - name: Verify houji ZRAM defaults in Image
+      if: steps.houji-alignment.outputs.applied == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        config="$(bash kernel/common/scripts/extract-ikconfig AnyKernel3/Image)"
+        for expected in 'CONFIG_ZRAM=m' 'CONFIG_ZSMALLOC=m' 'CONFIG_ZRAM_DEF_COMP="lzo-rle"' \
+          '# CONFIG_ZRAM_WRITEBACK is not set' '# CONFIG_ZRAM_MEMORY_TRACKING is not set'; do
+          if ! grep -Fxq "$expected" <<< "$config"; then
+            echo "::error::Unexpected houji Image ZRAM config. Expected: $expected"
+            exit 1
+          fi
+        done
+
     - name: Configure and Brand AnyKernel3 for HNHouji
       shell: bash
       run: |
         if [ -f "${{ github.workspace }}/scripts/customize-anykernel3.sh" ]; then
-          bash "${{ github.workspace }}/scripts/customize-anykernel3.sh" "${{ github.workspace }}/AnyKernel3" "${{ inputs.kernel_version }}"
+          bash "${{ github.workspace }}/scripts/customize-anykernel3.sh" "${{ github.workspace }}/AnyKernel3" "${{ inputs.kernel_version }}" "${{ inputs.variant }}"
         fi
 
     - name: Upload Artifacts
@@ -782,11 +800,16 @@ jobs:
         fi
 
         if [ "$NOMOUNT_ENABLED" = "true" ]; then
-          METHOD="GKI source build with SHA-pinned root implementation, SUSFS, and NoMount"
           NOMOUNT_MODULE_COMMIT="${{ inputs.nomount_commit }}"
         else
-          METHOD="GKI source build with SHA-pinned root implementation and SUSFS"
           NOMOUNT_MODULE_COMMIT="N/A"
+        fi
+        METHOD="GKI source build with SHA-pinned root implementation"
+        if [ "${{ contains(inputs.feature_set, 'SUSFS') || inputs.feature_set == 'All' }}" = "true" ]; then
+          METHOD="$METHOD, SUSFS"
+        fi
+        if [ "$NOMOUNT_ENABLED" = "true" ]; then
+          METHOD="$METHOD, NoMount"
         fi
 
         metadata_file="/tmp/${SUMMARY_BASE}-metadata.json"
@@ -913,11 +936,11 @@ jobs:
             status: $status
           }' > "$metadata_file"
 
-        jq -e '
+        jq -e --argjson susfs_enabled "${{ contains(inputs.feature_set, 'SUSFS') || inputs.feature_set == 'All' }}" '
           .status == "Build-verified only" and
           (.root.manager | length > 0) and
           (.root.version | length > 0) and
-          (.susfs_revision | test("^[0-9a-f]{40}$")) and
+          (if $susfs_enabled then (.susfs_revision | test("^[0-9a-f]{40}$")) else .susfs_revision == "N/A" end) and
           (.kernel_source_commit | test("^[0-9a-f]{40}$")) and
           (.artifact_url | startswith("https://")) and
           (.sha256 | test("^sha256:[0-9a-f]{64}$")) and
