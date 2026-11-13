@@ -199,7 +199,7 @@ runs:
       working-directory: ${{ github.workspace }}/kernel/common
       run: |
         set -euo pipefail
-        echo "[+] Applying Xiaomi 14 (houji 8GB RAM) zero-bootloop build safeguards (pure upstream 6.1.177 mm/sched/binder/zram C code)..."
+        echo "[+] Applying Xiaomi 14 (houji) build safeguards for Linux $(make -s kernelversion)..."
 
         # 1. Prevent -Wvla build error across drivers/gpu/drm
         if [ -f "Makefile" ]; then

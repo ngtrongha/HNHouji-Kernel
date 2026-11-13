@@ -85,6 +85,20 @@ class DisplayAlignmentTests(unittest.TestCase):
             'CONFIG_ZRAM_DEF_COMP_LZ4=y', 'CONFIG_ZRAM_WRITEBACK=y', 'CONFIG_ZRAM_MEMORY_TRACKING=y',
         ])
 
+    def test_stock_157_uses_exact_source_and_houji_config_checks(self):
+        workflow = yaml.safe_load((ROOT / '.github/workflows/build.yml').read_text(encoding='utf-8'))
+        steps = workflow['jobs']['build-gki']['steps']
+        stock = next(s for s in steps if s.get('id') == 'houji-stock')
+        misc = next(s for s in steps if s.get('uses') == './.github/actions/misc')
+        verify = next(s for s in steps if s.get('name') == 'Verify houji kernel configuration in Image')
+        self.assertEqual(stock['if'], "inputs.version == 'android14-6.1' && inputs.sublevel == '157' "
+                         "&& inputs.os_patch_level == '2025-12'")
+        self.assertIn('stock_commit=78a0a76cd7b7029059bdf03eba04ebeaf9af4eed', stock['run'])
+        self.assertIn('git checkout --detach "$stock_commit"', stock['run'])
+        self.assertIn('test "$(make -s kernelversion)" = \'6.1.157\'', stock['run'])
+        self.assertIn('steps.houji-stock.outputs.applied', misc['with']['preserve_zram_defaults'])
+        self.assertIn('steps.houji-stock.outputs.applied', verify['if'])
+
 
 if __name__ == '__main__':
     unittest.main()

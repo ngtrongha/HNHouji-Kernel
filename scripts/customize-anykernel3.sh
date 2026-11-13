@@ -4,6 +4,8 @@ set -euo pipefail
 AK3_DIR="${1:-./AnyKernel3}"
 KERNEL_VERSION="${2:-6.1}"
 ROOT_VARIANT="${3:-}"
+PATCH_LEVEL="${4:-lts}"
+SUBLEVEL="${5:-}"
 
 if [ ! -d "$AK3_DIR" ]; then
   echo "[-] AnyKernel3 directory not found at $AK3_DIR, skipping customization."
@@ -63,20 +65,23 @@ ui_print " "
 ui_print "============================================"
 ui_print "       HNHouji Kernel for Xiaomi 14         "
 ui_print "============================================"
-ui_print "  * Base: Google ACK 6.1 LTS"
 ui_print "  * Upstream: WildKernels by TheWildJames"
 ui_print "  * Installer: AnyKernel3 by osm0sis"
-ui_print "  * Display DRM & SPMI: Stock 6.1.157 Shield"
-ui_print "  * Addons: BBRv3, Baseband Guard, DroidSpaces"
-ui_print "  * New stock shield: device validation pending"
-ui_print "============================================"
-ui_print " "
 EOF
+    case "$PATCH_LEVEL" in
+      lts*|177)
+        printf 'ui_print "  * Base: Google ACK 6.1 LTS"\nui_print "  * Display DRM & SPMI: Stock 6.1.157 Shield"\n' >> "$AK3_DIR/anykernel.sh"
+        ;;
+      *)
+        printf 'ui_print "  * Base: Google ACK 6.1.%s (%s)"\n' "$SUBLEVEL" "$PATCH_LEVEL" >> "$AK3_DIR/anykernel.sh"
+        ;;
+    esac
     case "$ROOT_VARIANT" in
       BakaSU|KernelSU-Next|KernelSU|ReSukiSU|SukiSU-Ultra|KowSU)
         printf 'ui_print "  * Root: %s"\n' "$ROOT_VARIANT" >> "$AK3_DIR/anykernel.sh"
         ;;
     esac
+    printf 'ui_print "============================================"\nui_print " "\n' >> "$AK3_DIR/anykernel.sh"
   else
     cat << 'EOF' >> "$AK3_DIR/anykernel.sh"
 

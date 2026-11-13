@@ -160,6 +160,21 @@ jobs:
         kernel_version: ${{ inputs.kernel_version }}
         os_patch_level: ${{ inputs.os_patch_level }}
 
+    - name: Pin Xiaomi 14 stock 6.1.157 source
+      id: houji-stock
+      if: inputs.version == 'android14-6.1' && inputs.sublevel == '157' && inputs.os_patch_level == '2025-12'
+      shell: bash
+      working-directory: ${{ github.workspace }}/kernel/common
+      run: |
+        set -euo pipefail
+        stock_commit=78a0a76cd7b7029059bdf03eba04ebeaf9af4eed
+        git fetch --no-tags --depth=1 https://android.googlesource.com/kernel/common "$stock_commit"
+        test "$(git rev-parse FETCH_HEAD)" = "$stock_commit"
+        git checkout --detach "$stock_commit"
+        test "$(make -s kernelversion)" = '6.1.157'
+        echo "KERNEL_SOURCE_COMMIT=$stock_commit" >> "$GITHUB_ENV"
+        echo "applied=true" >> "$GITHUB_OUTPUT"
+
     - name: Surgical 6.1-LTS Source Alignment for Xiaomi 14 (houji)
       id: houji-alignment
       if: inputs.kernel_version == '6.1' && (inputs.os_patch_level == 'lts' || startsWith(inputs.os_patch_level, 'lts') || inputs.os_patch_level == '177')
@@ -450,7 +465,7 @@ jobs:
     - name: Setup Misc Configs
       uses: ./.github/actions/misc
       with:
-        preserve_zram_defaults: ${{ steps.houji-alignment.outputs.applied || 'false' }}
+        preserve_zram_defaults: ${{ steps.houji-stock.outputs.applied || steps.houji-alignment.outputs.applied || 'false' }}
 
     - name: Enable BPF Stack (BTF + eBPF + FUSE-BPF)
       if: contains(inputs.feature_set, 'BPF')
@@ -755,7 +770,7 @@ jobs:
         } > "$SUMMARY_FILE"
 
     - name: Verify houji kernel configuration in Image
-      if: steps.houji-alignment.outputs.applied == 'true'
+      if: steps.houji-stock.outputs.applied == 'true' || steps.houji-alignment.outputs.applied == 'true'
       shell: bash
       run: |
         set -euo pipefail
@@ -781,7 +796,7 @@ jobs:
       shell: bash
       run: |
         if [ -f "${{ github.workspace }}/scripts/customize-anykernel3.sh" ]; then
-          bash "${{ github.workspace }}/scripts/customize-anykernel3.sh" "${{ github.workspace }}/AnyKernel3" "${{ inputs.kernel_version }}" "${{ inputs.variant }}"
+          bash "${{ github.workspace }}/scripts/customize-anykernel3.sh" "${{ github.workspace }}/AnyKernel3" "${{ inputs.kernel_version }}" "${{ inputs.variant }}" "${{ inputs.os_patch_level }}" "${{ steps.extract.outputs.sublevel }}"
         fi
 
     - name: Upload Artifacts

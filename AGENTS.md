@@ -354,3 +354,8 @@ Every time a CI build error or device runtime bug occurs, **you MUST add its sym
 - **Symptom**: WildKernels run `41590758053` failed at compilation with an incompatible callback type in `fs/notify/fdinfo.c` after enabling fanotify.
 - **Root Cause**: SUSFS widens `show_fdinfo()` for mount or kstat support, while `fanotify_fdinfo()` in the affected source still takes two arguments. This is a compile-time mismatch, unrelated to the unconfirmed cause of device reboots.
 - **Prevention**: Apply the upstream `fc9a0bc49` callback fix after the SUSFS patch and keep the existing fanotify config. On aligned houji builds the selected patch applies with the stock `fs/super.c` vendor-hook include intact. Keep the existing patch-aware namespace check, reject failed hunks, and verify the callback and both trace-hook includes against the exact ACK and SUSFS revisions.
+
+## Rule 42: Test the Full Houji 6.1.157 Base When the LTS Build Still Reboots
+- **Symptom**: The user reports another spontaneous reboot after testing the 6.1.177 LTS build with BakaSU, SUSFS and Performance enabled.
+- **Root Cause**: Unconfirmed. The previous reports contain generic reboot reasons and no ramoops. A test on the full stock source can help assess the LTS baseline.
+- **Prevention**: The user authorized the full stock 6.1.157 base for this comparison. Select sublevel `157` and pin the whole ACK tree to `78a0a76cd7b7029059bdf03eba04ebeaf9af4eed` (`android14-6.1-2025-12_r22`) before applying the same feature switches. Fail on a pin or version mismatch. Keep 4 KiB pages, stock ZRAM defaults, Performance safeguards and KMI checks with force-load disabled. Keep the separate 6.1.177 LTS target for other builds.

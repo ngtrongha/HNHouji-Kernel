@@ -102,7 +102,7 @@ runs:
           # older patches require it temporarily absent. Inspect this patch.
           python3 "${{ github.workspace }}/.github/scripts/susfs_namespace_header.py" apply fs/namespace.c 50_add_susfs_in_gki-${{ inputs.version }}.patch
           # The pinned houji tree's super.c already accepts the current patch.
-          if [[ "${{ inputs.os_patch_level }}" != lts* && "${{ inputs.os_patch_level }}" != 177 ]]; then
+          if [[ "${{ inputs.os_patch_level }}" != lts* && "${{ inputs.os_patch_level }}" != 177 && "${{ inputs.os_patch_level }}" != 2025-12 ]]; then
             sed -i '/^#include <trace\/hooks\/fs.h>$/,+1 d' fs/super.c
           fi
         fi
