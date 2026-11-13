@@ -67,8 +67,9 @@ runs:
         if [ "${{ inputs.sublevel }}" -ge "157" ]; then
           echo "Reverting namespace.c Android 14 6.1 Fake Patch"
           python3 "${{ github.workspace }}/.github/scripts/susfs_namespace_header.py" restore fs/namespace.c
-          echo "Reverting super.c Android 14 6.1 Fake Patch"
-          sed -i '/^#include "internal.h"$/a #include <trace/hooks/fs.h>' fs/super.c
+          if [[ "${{ inputs.os_patch_level }}" != lts* && "${{ inputs.os_patch_level }}" != 177 ]]; then
+            sed -i '/^#include "internal.h"$/a #include <trace/hooks/fs.h>' fs/super.c
+          fi
         fi
 
     - name: Revert Android 15 6.6 Fake Patches

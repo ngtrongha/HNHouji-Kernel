@@ -101,8 +101,10 @@ runs:
           # Latest SUSFS now expects the stock hook include in its context;
           # older patches require it temporarily absent. Inspect this patch.
           python3 "${{ github.workspace }}/.github/scripts/susfs_namespace_header.py" apply fs/namespace.c 50_add_susfs_in_gki-${{ inputs.version }}.patch
-          echo "Applying super.c Android 14 6.1 Fake Patch"
-          sed -i '/^#include <trace\/hooks\/fs.h>$/,+1 d' fs/super.c
+          # The pinned houji tree's super.c already accepts the current patch.
+          if [[ "${{ inputs.os_patch_level }}" != lts* && "${{ inputs.os_patch_level }}" != 177 ]]; then
+            sed -i '/^#include <trace\/hooks\/fs.h>$/,+1 d' fs/super.c
+          fi
         fi
 
     - name: Apply Android 15 6.6 Fake Patches
@@ -159,6 +161,9 @@ runs:
       working-directory: ${{ github.workspace }}/kernel/common
       run: |
         patch -p1 < 50_add_susfs_in_gki-${{ inputs.version }}.patch
+
+        # WildKernels fc9a0bc49: match fanotify to the callback type added by SUSFS.
+        python3 "${{ github.workspace }}/.github/scripts/susfs_fdinfo_fanotify_arity.py" "$PWD"
 
         # Provide weak symbol fallback for fake_state in security/selinux/selinuxfs.c
         # KernelSU and KernelSU-Next define fake_state strongly in drivers/kernelsu/selinux_hide.c.

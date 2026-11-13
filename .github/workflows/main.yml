@@ -716,6 +716,12 @@ jobs:
                   for apk in _${AID}/*.apk; do
                     [ -f "$apk" ] || continue
                     NAME="$(basename "$apk")"
+                    if [ "$OWNER/$REPO" = "Baka-SU/BakaSU" ]; then
+                      case "${NAME,,}" in
+                        *-arm64-v8a-release.apk|*-universal-release.apk) ;;
+                        *) continue ;;
+                      esac
+                    fi
                     cp -f "$apk" "$OUT_APKS/$NAME"
                     echo "$OWNER|$REPO|$NAME" >> "$MANIFEST"
                   done
