@@ -41,6 +41,10 @@ function failure(error: unknown) {
     notify("Mức đã chọn không còn khả dụng. Kiểm tra mức hiện tại và danh sách mức kernel.", true);
     return;
   }
+  if (code === "kernel-crash-paused") {
+    notify("Tinh chỉnh kernel đang tạm dừng. Xem dấu vết khởi động ở Chẩn đoán trước khi bật lại.", true);
+    return;
+  }
   if (code === "kernel-preset-disabled" || code === "kernel-recovery-pending" || code === "reboot-required") {
     notify(code === "kernel-preset-disabled" ? "Bật preset kernel trước khi áp dụng." : code === "reboot-required" ? "Xử lý helper cũ trong Chẩn đoán rồi khởi động lại." : "Khởi động lại để module xử lý trạng thái hoàn tác từ phiên trước.", true);
     return;
@@ -67,6 +71,12 @@ function render(status: any) {
   text("profile-detail", detail + (status.runtime?.package ? ` · ${status.runtime.package}` : ""));
   text("kernel-sync", status.kernel_sync?.message || "Chưa có kết quả xác minh kernel.");
   input("kernel-tuning").checked = !!status.config?.kernel_tuning;
+  const pause = status.kernel_tuning?.pause_reason;
+  $("kernel-pause").hidden = !pause;
+  $("kernel-resume").hidden = !pause;
+  text("kernel-pause", pause === "state-invalid"
+    ? "Tinh chỉnh kernel đang tạm dừng vì trạng thái khôi phục không đọc được."
+    : `Tinh chỉnh kernel đang tạm dừng sau ${pause}. Xem dấu vết ở Chẩn đoán. Cần log để xác định nguyên nhân.`);
   const knobs = $("kernel-knobs"); knobs.replaceChildren();
   const states: Record<string,string> = { disabled:"Đã tắt riêng mục này", available:"Chờ áp dụng", waiting:"Chưa áp dụng", unsupported:"Bỏ qua · thiếu điều kiện hỗ trợ", applied:"Module đã áp dụng", "already-set":"Đã có sẵn · không ghi", "pending-restore":"Chờ hoàn tác", conflict:"Xung đột · giữ thay đổi bên ngoài" };
   for (const knob of status.kernel_tuning?.knobs || []) {
@@ -189,12 +199,27 @@ input("kernel-tuning").addEventListener("change", async () => {
   try { await act({action:"kernel_tuning_set",enabled:checkbox.checked}, checkbox.checked ? "Đã bật preset kernel; áp dụng khi xác minh đạt và tự động đang bật." : "Đã tắt preset kernel và yêu cầu hoàn tác."); }
   catch(error) { failure(error); await refresh(); } finally { checkbox.disabled = false; }
 });
+bind("kernel-resume", async () => { await act({action:"kernel_tuning_set",enabled:true}, "Đã cho phép tinh chỉnh kernel trở lại."); });
 for (const id of ["disable", "restore"]) bind(id, async () => { await act({ action: "disable" }, "Đã tắt và hoàn tác các thay đổi thuộc module."); });
 bind("migrate", async () => { await act({ action: "migrate_legacy" }, "Đã lưu trạng thái helper. Reboot trước khi bật tự động."); });
 bind("resolve-conflicts", async () => { await act({action:"resolve_conflicts"},"Đã giữ giá trị bên ngoài của các mục xung đột. Tự động đang tắt; kiểm tra lại trước khi bật.");text("doctor-result",pretty(await rpc({action:"doctor"}))); });
 bind("load-apps", async () => { packages = (await rpc<string[]>({ action: "packages" })).sort(); await refresh(); renderApps(); });
 input("app-search").addEventListener("input", renderApps);
 bind("doctor", async () => { text("doctor-result", pretty(await rpc({ action: "doctor" }))); });
+bind("boot-diagnostics", async () => {
+  const output = $("boot-result");
+  output.hidden = false;
+  text("boot-result", "Đang đọc dấu vết…");
+  try {
+    const { logs, pstore_state, ...boot } = await rpc({ action: "boot_diagnostics" });
+    const state: Record<string, string> = { available: "Có log ramoops", "no-records": "Không có bản ghi ramoops", unavailable: "Không truy cập được pstore", unreadable: "Không đọc được bản ghi ramoops" };
+    text("boot-result", [pretty(boot), state[pstore_state] || pstore_state, ...(logs || []).map((log: {name: string; text: string; truncated?: boolean}) =>
+      `${log.name}${log.truncated ? " (16 KiB đầu)" : ""}\n${log.text}`)].join("\n\n"));
+  } catch (error) {
+    text("boot-result", "Chưa đọc được dấu vết khởi động.");
+    throw error;
+  }
+});
 bind("export", async () => { const result = await rpc<{ path: string }>({ action: "export" }); notify(`Đã lưu báo cáo sạch trong Downloads/HNHouji. Mở Trình quản lý tệp → Bộ nhớ trong → Download → HNHouji. Tệp: ${result.path}`); });
 
 $("api-form").addEventListener("submit", async (event) => {

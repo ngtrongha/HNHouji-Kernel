@@ -14,7 +14,7 @@
     <header class="masthead">
       <div class="brand-mark" aria-hidden="true">h<span>。</span></div>
       <div><p class="eyebrow">HNHOUJI / XIAOMI 14</p><h1>Experience</h1></div>
-      <span class="version">PREVIEW<br>0.6.3</span>
+      <span class="version">PREVIEW<br>0.6.4</span>
     </header>
     <div id="bridge-warning" class="notice" hidden>Mở WebUI từ KernelSU Manager để kết nối thiết bị. Nếu Manager không hỗ trợ bridge, dùng CLI houjictl. Trang này không dùng dữ liệu mô phỏng.</div>
     <div id="notification" class="notice" role="status" aria-live="polite" hidden></div>
@@ -42,7 +42,7 @@
         </div>
         <article class="card"><h3>Pin · dữ liệu thực</h3><p>Thông tin đọc từ thiết bị, không thực hiện calibration. Dòng pin không phải dòng định mức charger.</p><pre id="battery-check">Chưa tải thông tin pin.</pre><h4>Khoảng screen-off do watcher quan sát</h4><pre id="battery-observation">Chưa đủ mẫu.</pre><h4>Thống kê Android riêng</h4><pre id="battery-android" role="status" aria-live="polite">Chưa tải thống kê.</pre><button id="battery-refresh" class="outline">Cập nhật thống kê pin</button><p class="footnote">Hai nguồn có mốc và độ phủ khác nhau; screen-off không đồng nghĩa deep sleep. Không suy ra mức tiết kiệm pin từ một mẫu.</p></article>
         <label for="control-search">Tìm điều khiển kernel và Android</label><input id="control-search" type="search" placeholder="Nhập tên điều khiển">
-        <article class="card"><div class="section-title"><span class="step">01</span><h3>Kernel · Hằng ngày</h3></div><p id="kernel-sync">Đang xác minh cấu hình và bản build kernel…</p><label class="check"><input id="kernel-tuning" type="checkbox"> Bật preset kernel Hằng ngày</label><div id="kernel-knobs" class="app-list"></div><div class="button-row"><button id="kernel-apply" class="primary">Áp dụng kernel ngay</button><button class="outline" data-open="apps">Quy tắc ứng dụng →</button></div></article>
+        <article class="card"><div class="section-title"><span class="step">01</span><h3>Kernel · Hằng ngày</h3></div><p id="kernel-sync">Đang xác minh cấu hình và bản build kernel…</p><p id="kernel-pause" role="status" hidden></p><button id="kernel-resume" class="outline" hidden>Cho phép tinh chỉnh lại</button><label class="check"><input id="kernel-tuning" type="checkbox"> Bật preset kernel Hằng ngày</label><div id="kernel-knobs" class="app-list"></div><div class="button-row"><button id="kernel-apply" class="primary">Áp dụng kernel ngay</button><button class="outline" data-open="apps">Quy tắc ứng dụng →</button></div></article>
         <article class="card"><div class="section-title"><span class="step">02</span><h3>Nhận xét từ dữ liệu hiện tại</h3></div><ul id="local-advice" class="advice"><li>Chưa có dữ liệu thiết bị.</li></ul><p class="footnote">Giữ nguyên HZ, WALT, thermal, kích thước/bộ nén ZRAM và driver vendor.</p></article>
       </section>
       <section id="apps" role="tabpanel" aria-labelledby="tab-apps" hidden>
@@ -109,6 +109,7 @@
       <section id="diagnostics" role="tabpanel" aria-labelledby="tab-diagnostics" hidden>
         <div class="page-heading"><p class="eyebrow">MINH BẠCH &amp; KHÔI PHỤC</p><h2>Chẩn đoán</h2><p>Kiểm tra dữ liệu thực. Bản preview cần được kiểm chứng trên houji trước khi kết luận hiệu năng.</p></div>
         <article class="card"><div class="button-row"><button id="doctor" class="primary">Kiểm tra hệ thống</button><button id="export" class="outline">Xuất báo cáo sạch</button></div><pre id="doctor-result">Chưa chạy kiểm tra.</pre></article>
+        <article class="card"><h3>Khởi động lại</h3><p>Đọc lý do boot, phiên bản HyperOS, build ID hiện tại và log ramoops còn lưu. Nếu cần đối chiếu, đọc ngay sau sự cố. Xem lại log thô trước khi chia sẻ.</p><button id="boot-diagnostics" class="outline">Đọc dấu vết lần khởi động</button><pre id="boot-result" hidden></pre></article>
         <article class="card"><h3>Helper cũ &amp; hoàn tác</h3><p>Helper cũ được sao lưu trước khi vô hiệu hóa. Sau khi xử lý cần reboot; module không đoán giá trị stock của các thiết lập cũ không có journal.</p><div class="button-row"><button id="migrate" class="outline">Xử lý helper cũ</button><button id="restore" class="outline">Tắt &amp; khôi phục thay đổi</button></div><p class="footnote">Nếu HyperOS/người dùng đã đổi giá trị, module giữ nguyên thay đổi đó và báo xung đột. Kiểm tra pending_restore bên trên trước khi chấp nhận giữ giá trị bên ngoài.</p><button id="resolve-conflicts" class="text-button">Giữ thay đổi bên ngoài &amp; bỏ quyền hoàn tác các mục xung đột</button></article>
       </section>
     </main>

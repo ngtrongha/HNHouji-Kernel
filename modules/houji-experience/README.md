@@ -1,4 +1,4 @@
-# HNHouji Experience 0.6.3-preview
+# HNHouji Experience 0.6.4-preview
 
 Module KernelSU độc lập cho Xiaomi 14 **houji**, arm64, GKI 6.1 và user 0.
 WebUI mở trong Manager; CLI là phương án dự phòng. Không cần metamodule,
@@ -7,6 +7,13 @@ defconfig, pin/driver và không đóng gói model AI.
 
 **Preview chưa được chứng nhận trên thiết bị.** Test máy phát triển và mock
 Android không thay thế thử nghiệm reboot, thông báo, game và pin chờ trên houji.
+
+## Mới trong 0.6.4-preview
+
+- Tạm dừng tinh chỉnh kernel sau panic/watchdog nếu journal của phiên trước có
+  mục ghi kernel. Người dùng chính có thể cho phép áp dụng lại sau khi kiểm tra.
+- Đọc lý do boot và log ramoops có giới hạn trong mục **Chẩn đoán**. Xem
+  [hướng dẫn khoanh vùng reboot](../../docs/houji-experience.md#tự-khởi-động-lại).
 
 ## Mới trong 0.6.3-preview
 
@@ -454,7 +461,7 @@ binary thuần Go CGO=0 dù cross-compile thành công. Không build bằng `net
 Go runtime được link vào binary; license BSD kèm ZIP. Không có dependency Go
 bên thứ ba hoặc HTTP server chạy nền.
 
-Đầu ra `dist/HNHouji-Experience-0.6.3-preview-generic.zip`, checksum và manifest; không
+Đầu ra `dist/HNHouji-Experience-0.6.4-preview-generic.zip`, checksum và manifest; không
 đưa source test, node_modules, model, key hay state vào ZIP. Build metadata nằm
 trong manifest. Build riêng tạo ZIP generic; khi được workflow kernel gọi,
 tạo ZIP có hậu tố bản kernel/hash và metadata nhúng. Workflow module không tự

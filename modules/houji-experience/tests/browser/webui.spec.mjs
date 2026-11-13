@@ -56,7 +56,7 @@ async function mockBridge(page) {
         case 'learning_save': learning=req.learning;break;
         case 'learning_analyze': data={at:'2026-10-25T13:00:00Z',legend:[{id:'app-01',package:'com.example.game'}],result:{source:'api',answer:'app-01: <img src=x onerror="window.pwned=true"> xem xét daily',usage:{total_tokens:100},finish_reason:'stop',model:'actual-model',elapsed_ms:20}};break;
         case 'status': data = { runtime: { profile: window.kernelMismatch?'observe':config.enabled?'daily':'observe', reason: window.kernelMismatch?'kernel-build-mismatch':config.enabled?'daily-default':'disabled' }, kernel_sync:{ready:!window.kernelMismatch,message:window.kernelMismatch?'Build ID không khớp; chỉ chẩn đoán.':'Release, IKCONFIG và build ID khớp.'}, kernel_tuning:{knobs:[{control:'swap_readahead',enabled:config.kernel_controls.swap_readahead!==false,level:config.kernel_levels.swap_readahead,levels:['stock','0','1','2','3'],label:'ZRAM: đọc từng trang swap',current:config.kernel_tuning&&config.kernel_levels.swap_readahead!=='stock'?config.kernel_levels.swap_readahead:'3',target:config.kernel_levels.swap_readahead,before:'3',state:window.kernelMismatch?'waiting':config.kernel_tuning?'applied':'waiting',detail:'Chỉ dùng với ZRAM.'}]}, watcher_running: true, config, report, ai }; break;
-        case 'kernel_tuning_set': config.kernel_tuning=req.enabled; break;
+        case 'kernel_tuning_set': config.kernel_tuning=req.enabled;if(req.enabled)window.kernelPause='';break;
         case 'packages': data = ['com.example.chat', 'com.example.game']; break;
         case 'ai_status': data = ai; break;
         case 'ai_preview': data = report; break;
@@ -70,8 +70,10 @@ async function mockBridge(page) {
         case 'enable': config.enabled = true; break;
         case 'disable': config.enabled = false; break;
         case 'doctor': data = { checks: { compatibility: 'supported' } }; break;
+        case 'boot_diagnostics': data = {system_boot_reason:'kernel_panic',pstore_state:'available',logs:[{name:'dmesg-ramoops-0',text:'<img src=x onerror="window.pwned=true">',truncated:true}]};break;
         case 'export': data = { path: '/storage/emulated/0/Download/HNHouji/HNHouji-report-20261024-130000-abcdef123456.json' }; break;
       }
+      if(req.action==='status')data.kernel_tuning.pause_reason=window.kernelPause;
       const answer=()=>{window[callback](0,JSON.stringify({ok:true,data}),'');record.completed=true;};
       if(req.action==='learning_preview'&&window.holdLearningPreview){window.releaseLearningPreview=()=>{window.holdLearningPreview=false;answer();};return;}
       setTimeout(answer, 0);
@@ -84,6 +86,22 @@ test('works without native bridge and never invents metrics', async ({ page }) =
   await expect(page.locator('#bridge-warning')).toBeVisible();
   await expect(page.locator('#ram-value')).toHaveText('—');
   await expect(page.locator('#profile-name')).toHaveText('Chưa kết nối');
+});
+
+test('reboot traces load on demand and resume requires a tap', async ({ page }) => {
+  await mockBridge(page);
+  await page.addInitScript(() => { window.kernelPause = 'kernel_panic'; });
+  await page.goto(url);
+  await expect(page.locator('#kernel-pause')).toContainText('kernel_panic');
+  await page.getByRole('tab', { name: 'Chẩn đoán', exact: true }).click();
+  expect(await page.evaluate(() => window.requests.some(x => x.req.action === 'boot_diagnostics'))).toBeFalsy();
+  await page.getByRole('button', { name: 'Đọc dấu vết lần khởi động' }).click();
+  await expect(page.locator('#boot-result')).toContainText('dmesg-ramoops-0 (16 KiB đầu)');
+  await expect(page.locator('#boot-result')).toContainText('<img src=x');
+  await expect(page.locator('#boot-result img')).toHaveCount(0);
+  await page.getByRole('tab', { name: 'Tổng quan', exact: true }).click();
+  await page.getByRole('button', { name: 'Cho phép tinh chỉnh lại' }).click();
+  await expect(page.locator('#kernel-pause')).toBeHidden();
 });
 
 test('kernel levels and Android settings use separate closed requests',async({page})=>{

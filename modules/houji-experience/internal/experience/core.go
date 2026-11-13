@@ -17,6 +17,11 @@ func (a *App) restoreEntries(ctx context.Context, j *Journal, match func(Entry) 
 	failed := false
 	matched := false
 	boot := a.bootID()
+	if !a.moduleDisabled() {
+		if err := a.pauseAfterCrash(ctx, *j, boot); err != nil {
+			return err
+		}
+	}
 	for i := len(j.Entries) - 1; i >= 0; i-- {
 		e := j.Entries[i]
 		if !match(e) {
@@ -24,7 +29,7 @@ func (a *App) restoreEntries(ctx context.Context, j *Journal, match func(Entry) 
 			continue
 		}
 		matched = true
-		if e.Kind == "kernel" && manualKernelControl(kernelControlForKnob(e.Package)) && boot != "" && j.Boot != boot {
+		if e.Kind == "kernel" && boot != "" && j.Boot != boot {
 			continue
 		}
 		current, err := a.current(ctx, e)
@@ -375,6 +380,9 @@ func (a *App) Step(ctx context.Context, pkg string, asleep bool) error {
 	if e != nil {
 		return e
 	}
+	if len(j.Entries) > 0 && j.Boot != a.bootID() {
+		return errors.New("kernel-recovery-pending")
+	}
 	reason := ""
 	if !c.Enabled || a.moduleDisabled() {
 		reason = "disabled"
@@ -555,6 +563,10 @@ func (a *App) snapshotConfig() map[string]any {
 }
 
 func (a *App) CleanupBoot(ctx context.Context) error {
+	// An enabled module's watcher runs after Android resolves sys.boot.reason.
+	if !a.moduleDisabled() {
+		return nil
+	}
 	if !exists(a.Paths.Module) {
 		a.clearLearning()
 		_ = os.Remove(a.state("ai.json"))

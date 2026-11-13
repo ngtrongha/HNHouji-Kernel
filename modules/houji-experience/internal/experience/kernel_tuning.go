@@ -391,7 +391,7 @@ func (a *App) manualKernelPlan() []KernelKnob {
 }
 
 func (a *App) tuneKernel(ctx context.Context, c Config, j *Journal, manual bool) error {
-	if !c.KernelTuning {
+	if !c.KernelTuning || a.kernelPauseReason() != "" {
 		return a.restoreEntries(ctx, j, func(e Entry) bool { return e.Kind == "kernel" })
 	}
 	plan := a.configuredKernelPlan(c)
@@ -452,7 +452,8 @@ func (a *App) tuneKernel(ctx context.Context, c Config, j *Journal, manual bool)
 
 func (a *App) kernelTuningStatus(ctx context.Context, c Config, sync KernelSync, j Journal) map[string]any {
 	knobs := a.configuredKernelPlan(c)
-	active := c.Enabled && c.KernelTuning && sync.Ready && a.ownerUser(ctx) && !a.moduleDisabled() && !exists(a.Paths.Legacy) && (c.MigrationBoot == "" || c.MigrationBoot != a.bootID())
+	pause := a.kernelPauseReason()
+	active := c.Enabled && c.KernelTuning && pause == "" && sync.Ready && a.ownerUser(ctx) && !a.moduleDisabled() && !exists(a.Paths.Legacy) && (c.MigrationBoot == "" || c.MigrationBoot != a.bootID())
 	for i := range knobs {
 		knob := &knobs[i]
 		if knob.State == "available" {
@@ -479,5 +480,5 @@ func (a *App) kernelTuningStatus(ctx context.Context, c Config, sync KernelSync,
 			}
 		}
 	}
-	return map[string]any{"enabled": c.KernelTuning, "preset": "daily", "knobs": knobs}
+	return map[string]any{"enabled": c.KernelTuning, "pause_reason": pause, "preset": "daily", "knobs": knobs}
 }

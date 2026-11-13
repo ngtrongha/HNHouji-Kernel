@@ -22,7 +22,7 @@ class PackageTests(unittest.TestCase):
             path = pack.ROOT / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("fixture", encoding="utf-8")
-        self.module_prop = b"id=houji_experience\nname=HNHouji Experience\nversion=0.6.3-preview\nversionCode=603\ndescription=Preview.\n"
+        self.module_prop = b"id=houji_experience\nname=HNHouji Experience\nversion=0.6.4-preview\nversionCode=604\ndescription=Preview.\n"
         (pack.ROOT / "module.prop").write_bytes(self.module_prop)
         binary = pack.ROOT / "bin/houjictl"
         binary.parent.mkdir()
@@ -35,7 +35,7 @@ class PackageTests(unittest.TestCase):
 
     def test_allowlist_permissions_checksum_and_reproducibility(self):
         target = pack.package(pack.ROOT / "dist")
-        self.assertEqual(target.name, "HNHouji-Experience-0.6.3-preview-generic.zip")
+        self.assertEqual(target.name, "HNHouji-Experience-0.6.4-preview-generic.zip")
         first = target.read_bytes()
         with zipfile.ZipFile(target) as archive:
             self.assertNotIn("ai.json", archive.namelist())
@@ -46,7 +46,7 @@ class PackageTests(unittest.TestCase):
             self.assertEqual(props["name"], "HNHouji Experience (generic)")
             self.assertIn("requires matching installed kernel metadata or a paired module ZIP", props["description"])
             self.assertEqual(props["id"], "houji_experience")
-            self.assertEqual(props["versionCode"], "603")
+            self.assertEqual(props["versionCode"], "604")
         self.assertTrue(target.with_suffix(".zip.sha256").read_text().startswith(hashlib.sha256(first).hexdigest()))
         manifest = json.loads(target.with_suffix(".manifest.json").read_text())
         self.assertTrue(manifest["build"]["cgo"])

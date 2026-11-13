@@ -38,6 +38,41 @@ CPU có trần xung riêng theo từng policy và GPU Adreno có trần xung t�
 Các mục mới mặc định **Gốc** và chỉ áp dụng thủ công trong phiên khởi động hiện
 tại. Mức xung phải có trong bảng driver và nằm trong giới hạn đang đọc được.
 
+## Tự khởi động lại
+
+Từ **0.6.4-preview**, Houji Experience áp dụng ý tưởng tự dừng tinh chỉnh sau sự
+cố của HyperCool 2.2.5. Sau khi Android khởi động xong, module tạm dừng ghi preset nếu lý do boot là
+`kernel_panic` hoặc `watchdog` và journal của phiên trước có mục ghi kernel.
+Trạng thái tạm dừng giữ qua các lần reboot. Sau khi kiểm tra, người dùng chính
+có thể chọn **Cho phép tinh chỉnh lại**. Giá trị kernel chỉ có hiệu lực trong
+phiên boot được ghi. Journal ghi trước thao tác nên chỉ cho biết một giá trị
+có thể đã được áp dụng.
+
+Mở **Chẩn đoán → Đọc dấu vết lần khởi động** ngay sau sự cố. Mục này hiển thị lý
+do từ Android và bootloader, phiên bản HyperOS, build ID kernel hiện tại nếu
+đọc được và tối đa 4 bản ghi `dmesg-ramoops`/`console-ramoops`, mỗi bản tối đa
+16 KiB đầu. Log thô chỉ hiện khi yêu cầu và có thể chứa dữ liệu riêng tư. Báo
+cáo sạch và AI không nhận log này. Boot reason chung hoặc pstore trống vẫn cần
+đối chiếu thêm. [Lý do boot trên Android](https://source.android.com/docs/core/architecture/bootloader/boot-reason) · [Ramoops](https://docs.kernel.org/admin-guide/ramoops.html)
+
+Để khoanh vùng, giữ cùng kernel và firmware. Dùng **Tắt & hoàn tác** trong
+Houji Experience, tắt HyperCool nếu đang chạy rồi thử lại cách sử dụng thường
+gặp lỗi. Ghi giờ, thao tác đang làm và module đang bật. Nếu máy tiếp tục đơ rồi
+tự reboot, lấy dấu vết trước lần khởi động tiếp theo. Khi cần log đầy đủ và có
+ADB với quyền root, dùng PowerShell để lưu từng nguồn riêng:
+
+```powershell
+adb shell getprop sys.boot.reason
+adb shell getprop ro.boot.bootreason
+adb shell getprop ro.build.version.incremental
+adb shell "su -c 'ls -l /sys/fs/pstore'"
+adb shell "su -c 'cat /sys/fs/pstore/dmesg-ramoops-0'" > houji-dmesg-ramoops.txt
+adb shell "su -c 'cat /sys/fs/pstore/console-ramoops-0'" > houji-console-ramoops.txt
+```
+
+Dùng tên bản ghi thực tế từ lệnh `ls`. Giữ các pin ACK/display và cơ chế bảo
+vệ nhiệt của hãng khi đối chiếu.
+
 Từ **0.1.3**, module paired dùng `kernel.json` nhúng trong ZIP để kiểm tra GNU
 build ID và toàn bộ hash IKCONFIG thực, nên thiếu sidecar trong `/data/adb`
 không chặn đúng cặp nữa. Uname khác metadata chỉ được chấp nhận khi các hash/ID

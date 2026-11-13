@@ -117,6 +117,8 @@ func (a *App) dispatch(ctx context.Context, r Request) (any, error) {
 		return a.Status(ctx), nil
 	case "doctor":
 		return a.Doctor(ctx), nil
+	case "boot_diagnostics":
+		return a.bootDiagnostics(ctx)
 	case "ai_preview":
 		return a.advisorContext(ctx, time.Now()), nil
 	case "report":
@@ -167,6 +169,9 @@ func (a *App) dispatch(ctx context.Context, r Request) (any, error) {
 		}
 		if !c.KernelTuning {
 			return nil, errors.New("kernel-preset-disabled")
+		}
+		if a.kernelPauseReason() != "" {
+			return nil, errors.New("kernel-crash-paused")
 		}
 		j, err := a.journal()
 		if err != nil {
@@ -252,6 +257,18 @@ func (a *App) dispatch(ctx context.Context, r Request) (any, error) {
 		}
 		return a.snapshotConfig(), nil
 	case "kernel_tuning_set":
+		if !a.ownerUser(ctx) {
+			return nil, errors.New("owner-user-only")
+		}
+		if r.Enabled {
+			j, err := a.journal()
+			if err != nil {
+				return nil, err
+			}
+			if boot := a.bootID(); boot == "" || (len(j.Entries) != 0 && j.Boot != boot) {
+				return nil, errors.New("kernel-recovery-pending")
+			}
+		}
 		c.KernelTuning = r.Enabled
 		c.Generation++
 		if e = atomicJSON(a.state("config.json"), c); e != nil {
@@ -263,6 +280,8 @@ func (a *App) dispatch(ctx context.Context, r Request) (any, error) {
 				return nil, err
 			}
 			e = a.restoreEntries(ctx, &j, func(entry Entry) bool { return entry.Kind == "kernel" })
+		} else if err := os.Remove(a.state(kernelPauseFile)); err != nil && !os.IsNotExist(err) {
+			return nil, err
 		}
 		return a.snapshotConfig(), e
 	case "enable":

@@ -13,6 +13,7 @@ import (
 type fakeAndroid struct {
 	game, millet, power, activity, window, user, failWrite, failRead, release string
 	doze                                                                      map[string]bool
+	properties                                                                map[string]string
 	writes                                                                    int
 	commands                                                                  []string
 }
@@ -25,6 +26,9 @@ func (f *fakeAndroid) Run(_ context.Context, name string, args ...string) (strin
 	}
 	switch name {
 	case "getprop":
+		if value, ok := f.properties[args[0]]; ok {
+			return value, nil
+		}
 		switch args[0] {
 		case "ro.product.device":
 			return "houji", nil
