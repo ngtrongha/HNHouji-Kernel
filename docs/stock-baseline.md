@@ -29,9 +29,8 @@ GKI_TASK_STRUCT_VENDOR_SIZE_MAX=1024, IPC_NS, PAGE_BLOCK_ORDER=11,
 POSIX_MQUEUE, POSIX_MQUEUE_SYSCTL and UDMABUF. This observation does not authorize
 copying these settings into the retained ACK baseline.
 
-The output remains a 6.1.177 kernel; its module still requires exact live build ID
-and full IKCONFIG hash matches against CI-generated paired metadata. Component
-resolution uses `commit_mode=latest`; version-mismatch bypass stays disabled.
+The output remains a 6.1.177 kernel. Component resolution uses
+`commit_mode=latest` with version-mismatch bypass disabled.
 
 Historical r8/r11 boot validation covers the old stock display pin. This new
 combination requires device testing for boot, display/brightness, suspend and

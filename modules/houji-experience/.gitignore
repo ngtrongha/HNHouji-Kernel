@@ -1,6 +1,0 @@
-/bin/
-/node_modules/
-/webroot/app.js
-/dist/
-/test-results/
-/playwright-report/

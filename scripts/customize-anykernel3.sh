@@ -68,7 +68,6 @@ ui_print "  * Installer: AnyKernel3 by osm0sis"
 ui_print "  * Display DRM & SPMI: Stock 6.1.157 Shield"
 ui_print "  * Root & Hide: KernelSU-Next + SUSFS v2.3.0"
 ui_print "  * Addons: BBRv3, Baseband Guard, DroidSpaces"
-ui_print "  * Perf: ARM64 NEON/Prefetch + S2Idle + Default FQ"
 ui_print "  * New stock shield: device validation pending"
 ui_print "============================================"
 ui_print " "
@@ -101,30 +100,11 @@ if [ -f "$houji_helper" ]; then
      mv "$houji_helper" "$houji_backup"; then
     ui_print "  -> Previous Houji helper moved out of service.d."
   else
-    ui_print "  -> Previous helper still present. Use Houji Experience to retire it."
+    ui_print "  -> Previous helper still present in service.d. Check the backup path."
   fi
 fi
 EOF
     echo "[+] Added recovery-time retirement for the previous Houji helper"
-  fi
-
-  if [ "$KERNEL_VERSION" = "6.1" ]; then
-    cat << 'EOF' >> "$AK3_DIR/anykernel.sh"
-
-# Publish build identity only; this does not modify the kernel or its config.
-if [ -f "$home/houji-kernel.json" ]; then
-  if mkdir -p /data/adb/houji-kernel && cp "$home/houji-kernel.json" /data/adb/houji-kernel/manifest.json.tmp; then
-    chmod 600 /data/adb/houji-kernel/manifest.json.tmp
-    if mv /data/adb/houji-kernel/manifest.json.tmp /data/adb/houji-kernel/manifest.json; then
-      ui_print "  -> Houji kernel build metadata installed."
-    else
-      ui_print "  -> Metadata unavailable: module will remain diagnostic-only."
-    fi
-  else
-    ui_print "  -> Cannot write /data/adb metadata; module will remain diagnostic-only."
-  fi
-fi
-EOF
   fi
 
   cat << 'EOF' >> "$AK3_DIR/anykernel.sh"

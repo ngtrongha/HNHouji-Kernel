@@ -14,7 +14,7 @@ Hardened, hardware-safe Android Generic Kernel Image (GKI 2.0) built on **Google
 </div>
 
 > [!NOTE]
-> **Upstream Source & Foundation**: This project is derived from and based on the automated GKI CI framework created by [WildKernels/GKI_KernelSU_SUSFS](https://github.com/WildKernels/GKI_KernelSU_SUSFS) by **TheWildJames** (Morgan Weedman), extended with specialized hardware shielding, stock DRM/SPMI compatibility pinning, F2FS memory layout alignment, and push notification services specifically engineered for **Xiaomi 14 (`houji`)**.
+> **Upstream Source & Foundation**: This project is derived from the automated GKI CI framework created by [WildKernels/GKI_KernelSU_SUSFS](https://github.com/WildKernels/GKI_KernelSU_SUSFS) by **TheWildJames** (Morgan Weedman), with stock DRM/SPMI compatibility pins and F2FS layout protection for **Xiaomi 14 (`houji`)**.
 
 > [!CAUTION]
 > Modifying your kernel carries inherent risks. While HNHouji is engineered with strict hardware shields and verified against device baselines, you assume all risk by flashing. Always backup your `boot` partition before flashing.
@@ -28,9 +28,7 @@ Standard upstream GKI kernels often suffer from black screens, screen flickering
 - 🛡️ **Stock Display Interfaces**: Pins Display DRM (`drivers/gpu/drm/`, `include/drm/`), Backlight (`drivers/video/backlight/`, `include/linux/backlight.h`), and SPMI (`drivers/spmi/`) to stock 6.1.157 (`78a0a76cd7b7`), while retaining the ACK 6.1.177 LTS base. See [baseline evidence](docs/stock-baseline.md).
 - 👁️ **Display Validation**: The updated stock display pin targets the user's new firmware. Boot, LTPO refresh and low-brightness behavior still require device testing; r8/r11 validation applies to the previous 6.1.138 pin.
 - 💾 **F2FS `/data` Mount Integrity**: Preserves Google ACK 6.1.177 stock F2FS struct layouts so Xiaomi's vendor memory hooks (`mi_ext_lru.ko`, `mi_memory.ko`) mount encrypted `/data` partitions cleanly without panics.
-- 🚀 **ARM64 Assembly & Memory Speedup**: Upgrades `memcmp` to a 64-byte NEON SIMD loop, adds L1 cache stream prefetching (`prfm pldl1strm`) to `memcpy`/`copy_to_user`, and applies 16-byte alignment to `clear_page`.
-- 🔋 **SM8650 S2Idle & Power Enhancements**: Eliminates spurious deep sleep wakeup loops during `s2idle` (Sultan Alsawaf fix), reduces `pm_freeze_timeout` to 2s, and trims `alarmtimer` wakelock to 100ms for minimal standby battery drain.
-- 🔔 **Houji Experience module**: Applies supported runtime kernel settings with readback and reversible restore. When recovery can write to `/data`, AnyKernel3 moves the old boot helper from `service.d` to `/data/adb/houji-kernel/` as a backup.
+- **Optional Performance Tuning**: Custom builds can enable ARM64 assembly and power-management patches with `use_perf`. Keep it off for houji reboot diagnosis.
 - ⚡ **Pure Google ACK Stability**: Built strictly upon official Google Android Common Kernel `android14-6.1` LTS sources without unsafe memory reclaim hacks or PSI dampening that could lead to deadlocks.
 
 ---
@@ -61,6 +59,9 @@ Standard upstream GKI kernels often suffer from black screens, screen flickering
 ## Installation Guide
 
 ### Recommended: Kernel Flasher (Rooted)
+If an older Houji Experience module is installed, disable it or remove it in
+KernelSU Manager before testing the kernel update.
+
 1. Download the latest `AnyKernel3.zip` (e.g., `6.1.177-android14-lts-KernelSU-Next-AnyKernel3.zip`) from [Releases](https://github.com/ngtrongha/GKI_KernelSU_SUSFS/releases).
 2. Open **[Kernel Flasher](docs/kernelflasher.md)** on your device.
 3. Backup your existing `boot` partition (or have a stock `boot.img` handy).

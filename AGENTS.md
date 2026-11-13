@@ -4,12 +4,12 @@
 - The user explicitly requested **stock 6.1.157 + 6.1 LTS**, followed by a new release build. Retain ACK `06aabb3c55412104814644e8d1b37df04940d99a` (6.1.177); update only the five DRM/backlight/SPMI paths to stock `78a0a76cd7b7029059bdf03eba04ebeaf9af4eed`.
 - This supersedes the old 6.1.138 display pin and exact-r11 pin restrictions in Rules 2/4/10/11/19 for this authorized firmware update. Preserve the ACK dma-buf/F2FS/MM/scheduler code, config policy, WALT/HZ restrictions, cache guard and KMI checks. Do not replace the full ACK tree with 6.1.157 or track newer ACK HEAD.
 - Fetch and check out the exact stock SHA; fail if unavailable rather than substituting a branch tip. Evidence and limits are in `docs/stock-baseline.md`. The new combination is not device-certified by historical r8/r11 testing.
-- Build on GitHub Actions with `commit_mode=latest`, 4 KiB pages and version-mismatch bypass disabled. The new kernel remains 6.1.177 and its paired module retains that baseline contract.
+- Build on GitHub Actions with `commit_mode=latest`, 4 KiB pages and version-mismatch bypass disabled. The kernel remains 6.1.177.
 
 ## Build mode preference (user instruction, 2026-10-24)
 - Always default component resolution and Codex-triggered builds to `commit_mode=latest`; do not silently substitute `verified`. An explicit later user choice may override this preference.
 - This preference tracks root/SUSFS/NoMount component branch tips. Preserve the houji ACK baseline and display/vendor compatibility shields below; do not infer permission to merge upstream kernel code or remove these shields from the commit-mode choice.
-- Build execution preference (2026-10-25): use GitHub Actions for builds, never build locally. Push the authorized change and trigger the action; do not wait for its result unless the user later requests that. Module-only fixes may use the module workflow with an existing successful kernel run/artifact to preserve pairing without rebuilding kernel source.
+- Build execution preference (2026-10-25): use GitHub Actions for builds, never build locally. Push the authorized change and trigger the action; do not wait for its result unless the user later requests that.
 
 ## Rule 0: Mandatory Error Ledger Update
 Every time a CI build error or device runtime bug occurs, **you MUST add its symptom, root cause, and prevention rule to this `AGENTS.md` file before pushing the fix** so the same failure is never repeated.
@@ -339,3 +339,8 @@ Every time a CI build error or device runtime bug occurs, **you MUST add its sym
 - **Symptom**: Houji Experience can remain in Observe mode with stock kernel values even when kernel metadata matches and the preset is enabled.
 - **Root Cause**: A failure in an Android setting or the notification allowlist restored every journal entry, including verified kernel writes, and blocked the watcher for the same configuration generation. This is reproducible in the mock Android runner. The affected phone's current blocking reason is unconfirmed.
 - **Prevention**: Restore Android entries separately when Android tuning fails. Expose an immediate kernel-only apply action through the same state lock, identity/capability checks, pressure guard, readback and journal. Retire the old boot helper outside `service.d` because it can race module writes and reset ZRAM. This supersedes Rule 15's reference to helper-based F2FS tuning. Never guess legacy settings that have no recorded original value.
+
+## Rule 39: Retire Houji Experience After Repeated Reboots
+- **Symptom**: The user reports repeated freezes and spontaneous reboots with r14 on HyperOS `OS3.0.305.0.WNCMIXM`, which stopped after disabling Houji Experience. Reports match the same kernel build ID and show `vm.page-cluster` back at `3`, F2FS `min_fsync_blocks` back at `8` and zero journal entries in the new boot. Both boot-reason properties returned `reboot,` and the device reported no ramoops.
+- **Root Cause**: Unconfirmed. Disabling the module correlated with the end of the reboot loop. The reports cannot isolate one runtime write, the watcher, or an interaction with the kernel or vendor stack.
+- **Prevention**: The user requested retiring Houji Experience. Remove its runtime, CI, paired metadata and release packaging. Keep its historical ledger entries as evidence only. Continue backing up the older notification helper outside `service.d`. Run the first kernel-only upgrade with `use_perf=false`, `commit_mode=latest`, 4 KiB pages and version-mismatch bypass disabled. Preserve the pinned ACK and display trees and the KMI checks. Verify the new kernel on the device before treating the reboot issue as resolved.

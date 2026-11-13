@@ -1,10 +1,6 @@
-import importlib.util
-from pathlib import Path
 import unittest
 
-spec = importlib.util.spec_from_file_location("namespace_header", Path(__file__).resolve().parents[3] / ".github/scripts/susfs_namespace_header.py")
-header = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(header)
+import susfs_namespace_header as header
 
 SOURCE = '#include <linux/fs_context.h>\n#include "pnode.h"\n#include "internal.h"\n' + header.HEADER + '\nstatic int unchanged_body;\n'
 

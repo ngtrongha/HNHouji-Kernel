@@ -1574,10 +1574,6 @@ jobs:
         fi
         echo "NoMount metamodule zip OK"
 
-    - name: Collect and verify paired houji modules from this run
-      if: (inputs.page_size || '4k') == '4k'
-      run: python3 scripts/collect-houji-experience.py --assets release-assets --run-id "$GITHUB_RUN_ID"
-
     - name: Create Release
       env:
         GH_TOKEN: ${{ github.token }}
@@ -1589,7 +1585,7 @@ jobs:
         shopt -s nullglob globstar
 
         # Collect assets first so a glob miss fails fast instead of mid-release.
-        files=(release-assets/**/*.zip release-assets/**/*.apk release-assets/**/*-boot*.img release-assets/HNHouji-Experience-*.zip.sha256 release-assets/HNHouji-Experience-*.manifest.json)
+        files=(release-assets/**/*.zip release-assets/**/*.apk release-assets/**/*-boot*.img)
         if [ "${#files[@]}" -eq 0 ]; then
           echo "No release assets found" >&2
           exit 1
@@ -1918,12 +1914,6 @@ jobs:
           done
           ls release-assets/*.zip 2>/dev/null | wc -l | xargs -I{} echo "{} zips ready"
 
-      - name: Collect and verify paired houji modules from this run
-        if: (inputs.page_size || '4k') == '4k'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/collect-houji-experience.py --assets release-assets --run-id "$GITHUB_RUN_ID"
-
       - name: Replace nightly prerelease
         env:
           GH_TOKEN: ${{ github.token }}
@@ -1948,7 +1938,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           shopt -s nullglob
-          files=(release-assets/*.zip release-assets/HNHouji-Experience-*.zip.sha256 release-assets/HNHouji-Experience-*.manifest.json)
+          files=(release-assets/*.zip)
           if [ "${#files[@]}" -eq 0 ]; then
             echo "No kernel artifacts this run; nightly published with notes only." >> "$GITHUB_STEP_SUMMARY"
             exit 0
