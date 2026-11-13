@@ -41,7 +41,7 @@ runs:
           patch -p1 -F3 --forward < "${{ github.workspace }}/kernel_patches/common/reduce_gc_thread_sleep_time.patch"
           patch -p1 -F3 --forward < "${{ github.workspace }}/kernel_patches/common/f2fs_reduce_congestion.patch"
         else
-          echo "Skipping F2FS C-patches on 6.1 (Rule 5 & 8: tuned via runtime sysfs instead)"
+          echo "Skipping F2FS C-patches on 6.1 to preserve the vendor layout (Rules 5 and 8)"
         fi
         # Skip wakelock timeout on 6.1+ to prevent sleep/sensor freezes on HyperOS (reverted in GKID)
         if [ "$(printf '%s\n' "$KERNEL_VERSION" "6.1" | sort -V | head -n1)" != "6.1" ]; then

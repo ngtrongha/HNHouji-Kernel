@@ -63,6 +63,13 @@ runs:
         sublevel: ${{ inputs.sublevel }}
         os_patch_level: ${{ inputs.os_patch_level }}
 
+    - name: Guard optional SUSFS helpers for BakaSU
+      if: inputs.root_flavor == 'bakasu' && inputs.version == 'android14-6.1'
+      shell: bash
+      working-directory: ${{ github.workspace }}/kernel/common
+      run: |
+        python3 "${{ github.workspace }}/.github/scripts/susfs_guard_priority_helpers.py" fs/susfs.c
+
     - name: Revert SUSFS Fake Patches
       uses: ./.github/actions/susfs-revert-patches
       with:

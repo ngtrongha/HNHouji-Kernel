@@ -265,11 +265,11 @@ jobs:
         sublevel: ${{ steps.extract.outputs.sublevel }}
         os_patch_level: ${{ inputs.os_patch_level }}
 
-    - name: Reject unsupported root and SUSFS combinations
-      if: (inputs.root_flavor == 'kowsu' || inputs.root_flavor == 'bakasu') && (contains(inputs.feature_set, 'SUSFS') || inputs.feature_set == 'All')
+    - name: Reject KowSU with SUSFS
+      if: inputs.root_flavor == 'kowsu' && (contains(inputs.feature_set, 'SUSFS') || inputs.feature_set == 'All')
       shell: bash
       run: |
-        echo "ERROR: ${{ inputs.root_flavor }} requires SUSFS off in this workflow." >&2
+        echo "ERROR: KowSU requires SUSFS off in this workflow." >&2
         exit 1
 
     - name: Setup Selected Root Implementation
@@ -278,6 +278,7 @@ jobs:
       with:
         flavor: ${{ inputs.root_flavor }}
         commit: ${{ inputs.root_commit }}
+        use_susfs: ${{ contains(inputs.feature_set, 'SUSFS') || inputs.feature_set == 'All' }}
 
     - name: Mark No Root build metadata
       if: inputs.root_flavor == 'none'
@@ -753,7 +754,7 @@ jobs:
           fi
         } > "$SUMMARY_FILE"
 
-    - name: Verify houji ZRAM defaults in Image
+    - name: Verify houji kernel configuration in Image
       if: steps.houji-alignment.outputs.applied == 'true'
       shell: bash
       run: |
@@ -766,6 +767,15 @@ jobs:
             exit 1
           fi
         done
+        if [ "${{ inputs.root_flavor }}" = "bakasu" ] &&
+           [ "${{ contains(inputs.feature_set, 'SUSFS') || inputs.feature_set == 'All' }}" = "true" ]; then
+          for expected in 'CONFIG_KSU=y' 'CONFIG_KSU_SUSFS=y' '# CONFIG_KSU_TRACEPOINT_HOOK is not set'; do
+            if ! grep -Fxq "$expected" <<< "$config"; then
+              echo "::error::Unexpected BakaSU hook configuration. Expected: $expected"
+              exit 1
+            fi
+          done
+        fi
 
     - name: Configure and Brand AnyKernel3 for HNHouji
       shell: bash

@@ -350,10 +350,6 @@ jobs:
               ROOT_MATRIX="[$(mk_entry next KernelSU-Next "$NEXT_COMMIT")]"
               ;;
             BakaSU)
-              if [ "$SCHED_SUSFS" = "true" ]; then
-                echo "ERROR: Select SUSFS=false for BakaSU's GKI tracepoint build." >&2
-                exit 1
-              fi
               BAKASU_COMMIT="$(resolve_sha https://github.com/Baka-SU/BakaSU.git refs/heads/main)"
               echo "root_flavor=bakasu" >> "$GITHUB_OUTPUT"
               emit root_commit "$BAKASU_COMMIT"

@@ -164,10 +164,13 @@ python3() {{ printf '%s\\n' "$2" >> "$LOOKUPS"; [ "$FAIL_LOOKUP" = false ] || re
         self.assertEqual(json.loads(outputs["root_matrix"]), [
             {"root_flavor": "bakasu", "variant": "BakaSU", "root_commit": SHA},
         ])
-        result, _, branches = self.run_resolution(flavor="BakaSU")
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("SUSFS=false", result.stderr)
-        self.assertEqual(branches, [])
+        result, outputs, branches = self.run_resolution(flavor="BakaSU")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(outputs["root_matrix"]), [
+            {"root_flavor": "bakasu", "variant": "BakaSU", "root_commit": SHA},
+        ])
+        self.assertEqual(branches, [BRANCH])
+        self.assertEqual(outputs["susfs_commit_android14_6_1"], SHA)
 
     def test_failed_lookup_stops_workflow_without_emitting_stale_sha(self):
         result, outputs, branches = self.run_resolution(fail=True)

@@ -7,6 +7,9 @@ inputs:
   commit:
     description: 'Full immutable commit SHA'
     required: true
+  use_susfs:
+    description: 'Select the SUSFS inline hook for BakaSU'
+    default: 'false'
 
 runs:
   using: composite
@@ -139,12 +142,12 @@ runs:
           fi
         done
 
-    - name: Select BakaSU tracepoint hooks and its own manager
+    - name: Select the BakaSU hook and manager
       if: inputs.flavor == 'bakasu'
       uses: ./.github/actions/set-kernel-config
       with:
         config_list: |
-          CONFIG_KSU_TRACEPOINT_HOOK=y
+          CONFIG_KSU_TRACEPOINT_HOOK=${{ inputs.use_susfs == 'true' && 'n' || 'y' }}
           CONFIG_KSU_MULTI_MANAGER_SUPPORT=n
 
     - name: Allow the BakaSU checkout in the Kleaf sandbox
