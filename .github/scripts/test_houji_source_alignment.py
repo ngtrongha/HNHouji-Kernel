@@ -1,6 +1,7 @@
 """Exercise the workflow's display replacement against real Git trees."""
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -98,6 +99,43 @@ class DisplayAlignmentTests(unittest.TestCase):
         self.assertIn('test "$(make -s kernelversion)" = \'6.1.157\'', stock['run'])
         self.assertIn('steps.houji-stock.outputs.applied', misc['with']['preserve_zram_defaults'])
         self.assertIn('steps.houji-stock.outputs.applied', verify['if'])
+
+    def test_performance_keeps_ack_math_and_stock_pcm(self):
+        workflow = yaml.safe_load((ROOT / '.github/workflows/build.yml').read_text(encoding='utf-8'))
+        performance = next(s for s in workflow['jobs']['build-gki']['steps']
+                           if s.get('uses') == './.github/actions/performance')
+        self.assertEqual(performance['with']['houji_baseline'],
+                         "${{ steps.houji-stock.outputs.applied == 'true' && 'stock' || "
+                         "steps.houji-alignment.outputs.applied == 'true' && 'lts' || '' }}")
+
+        path = ROOT / '.github/actions/performance/action.yml'
+        action = yaml.safe_load(path.read_text(encoding='utf-8'))
+        step = action['runs']['steps'][0]
+        self.assertEqual(step['env']['HOUJI_BASELINE'], '${{ inputs.houji_baseline }}')
+        script = (step['run'].replace('${{ inputs.kernel_version }}', '$TEST_KERNEL_VERSION')
+                  .replace('${{ github.workspace }}', '$PWD')
+                  .replace('${{ github.action_path }}', '$PWD'))
+        bash = (str(Path(os.environ['ProgramFiles']) / 'Git/bin/bash.exe')
+                if os.name == 'nt' else shutil.which('bash'))
+        with tempfile.TemporaryDirectory(prefix='houji-performance-') as directory:
+            repo = Path(directory)
+            (repo / 'kernel_patches/common').mkdir(parents=True)
+            (repo / 'patches').mkdir()
+            for relative in set(re.findall(r'(?:kernel_patches/common|patches)/[\w-]+\.patch', script)):
+                (repo / relative).write_text(Path(relative).stem + '\n', encoding='utf-8')
+            for baseline, kernel, expected_math, expected_pcm in (
+                ('stock', '6.1', False, False), ('lts', '6.1', False, True),
+                ('', '6.1', True, True), ('', '5.15', True, True),
+            ):
+                with self.subTest(baseline=baseline, kernel=kernel):
+                    env = dict(os.environ, HOUJI_BASELINE=baseline, TEST_KERNEL_VERSION=kernel)
+                    result = subprocess.run([bash, '-c', 'patch() { cat; }\n' + script],
+                                            cwd=repo, env=env, capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    applied = result.stdout.splitlines()
+                    self.assertIn('mem_opt_prefetch', applied)
+                    self.assertEqual('int_sqrt' in applied, expected_math)
+                    self.assertEqual('0002-alsa-pcm-wait-time' in applied, expected_pcm)
 
 
 if __name__ == '__main__':

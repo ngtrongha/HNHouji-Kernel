@@ -461,6 +461,7 @@ jobs:
       if: contains(inputs.feature_set, 'Perf')
       with:
         kernel_version: ${{ inputs.kernel_version }}
+        houji_baseline: ${{ steps.houji-stock.outputs.applied == 'true' && 'stock' || steps.houji-alignment.outputs.applied == 'true' && 'lts' || '' }}
 
     - name: Setup Misc Configs
       uses: ./.github/actions/misc

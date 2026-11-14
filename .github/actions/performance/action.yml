@@ -4,6 +4,10 @@ inputs:
   kernel_version:
     description: 'Kernel version (e.g., 6.1)'
     required: true
+  houji_baseline:
+    description: 'Pinned Xiaomi 14 source: stock or lts'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -11,6 +15,8 @@ runs:
     - name: Apply Experimental Patches
       shell: bash
       working-directory: ${{ github.workspace }}/kernel/common
+      env:
+        HOUJI_BASELINE: ${{ inputs.houji_baseline }}
       run: |
         set -euo pipefail
         KERNEL_VERSION="${{ inputs.kernel_version }}"
@@ -36,7 +42,11 @@ runs:
           echo "Optimised memcmp patch not found!"
         fi
         patch -p1 -F3 --forward < "${{ github.workspace }}/kernel_patches/common/minimise_wakeup_time.patch"
-        patch -p1 -F3 --forward < "${{ github.workspace }}/kernel_patches/common/int_sqrt.patch"
+        if [ -z "$HOUJI_BASELINE" ]; then
+          patch -p1 -F3 --forward < "${{ github.workspace }}/kernel_patches/common/int_sqrt.patch"
+        else
+          echo "Keeping ACK int_sqrt on houji (bit-scan initialization and full input range)"
+        fi
         if [ "$KERNEL_VERSION" != "6.1" ]; then
           patch -p1 -F3 --forward < "${{ github.workspace }}/kernel_patches/common/reduce_gc_thread_sleep_time.patch"
           patch -p1 -F3 --forward < "${{ github.workspace }}/kernel_patches/common/f2fs_reduce_congestion.patch"
@@ -89,7 +99,11 @@ runs:
         echo "Patching silence_system_logspam.patch"
         patch -p1 -F3 --forward < "${{ github.workspace }}/kernel_patches/common/silence_system_logspam.patch"
 
-        echo "Applying GKID ALSA PCM wait time patch"
-        patch -p1 -F3 --forward < "${{ github.action_path }}/patches/0002-alsa-pcm-wait-time.patch" || echo "ALSA patch skipped"
+        if [ "$HOUJI_BASELINE" = "stock" ]; then
+          echo "Keeping stock houji ALSA PCM timeouts (already in the source)"
+        else
+          echo "Applying GKID ALSA PCM wait time patch"
+          patch -p1 -F3 --forward < "${{ github.action_path }}/patches/0002-alsa-pcm-wait-time.patch" || echo "ALSA patch skipped"
+        fi
 
         echo "[+] Other patches applied"

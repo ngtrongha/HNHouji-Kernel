@@ -41,3 +41,26 @@ combination requires device testing for boot, display/brightness, suspend and
 `/data` behavior. The supplied boot alone does not identify the firmware version
 or prove that the saved vendor_boot and other images belong to the same update.
 The original stock images and previous extraction remain untouched.
+
+## Measure Performance on the device
+
+Compare builds on the same HyperOS version with matching source and component
+revisions. Change only the patch or Performance switch under test. Repeat the
+same app launch, scroll, Camera, or game sequence at a similar starting
+temperature and with matching display and power settings.
+
+From the repository root in PowerShell, start the trace and perform the test
+sequence during the 30-second capture. Use a different local filename per run.
+
+```powershell
+$trace = "houji-$(Get-Date -Format 'yyyyMMdd-HHmmss').pftrace"
+$remote = "/data/misc/perfetto-traces/$trace"
+Get-Content -Raw docs/houji-perfetto.pbtxt | adb shell perfetto --txt -c - -o $remote
+if ($LASTEXITCODE -eq 0) { adb pull $remote $trace }
+```
+
+Open the trace in [Perfetto UI](https://ui.perfetto.dev/). Compare FrameTimeline
+deadline misses and p95 frame overrun for the same app. Inspect runnable delays,
+CPU frequency and idle transitions around slow frames when those tracks are
+available. Repeat suspend/resume and Camera tests separately to check stability.
+Keep the full traces local because they can contain app and process names.
