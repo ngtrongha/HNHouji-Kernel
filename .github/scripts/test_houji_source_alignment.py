@@ -9,11 +9,26 @@ import unittest
 
 import yaml
 
+from susfs_guard_priority_helpers import mark_optional_helpers
+
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 class DisplayAlignmentTests(unittest.TestCase):
+    def test_bakasu_susfs_credential_helpers_remain_visible_to_path_filter(self):
+        source = (
+            'static struct cred *susfs_switch_to_ksu_domain(void) {\n    return NULL;\n}\n'
+            'static void susfs_restore_creds(struct cred *orig_cred) {\n}\n'
+            '#ifdef CONFIG_KSU_SUSFS_SUS_PATH\n'
+            '    struct cred *orig = susfs_switch_to_ksu_domain();\n'
+            '    susfs_restore_creds(orig);\n'
+            '#endif\n'
+        )
+        expected = source.replace('static ', 'static __maybe_unused ')
+        self.assertEqual(mark_optional_helpers(source), expected)
+        self.assertEqual(mark_optional_helpers(expected), expected)
+
     def test_donor_replaces_tree_including_added_and_removed_files(self):
         workflow = yaml.safe_load((ROOT / '.github/workflows/build.yml').read_text(encoding='utf-8'))
         step = next(s for s in workflow['jobs']['build-gki']['steps']

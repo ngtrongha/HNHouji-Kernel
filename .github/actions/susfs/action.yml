@@ -63,7 +63,7 @@ runs:
         sublevel: ${{ inputs.sublevel }}
         os_patch_level: ${{ inputs.os_patch_level }}
 
-    - name: Guard optional SUSFS helpers for BakaSU
+    - name: Mark optional SUSFS helpers for BakaSU
       if: inputs.root_flavor == 'bakasu' && inputs.version == 'android14-6.1'
       shell: bash
       working-directory: ${{ github.workspace }}/kernel/common
