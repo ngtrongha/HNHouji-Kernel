@@ -54,6 +54,9 @@ runs:
         if [ "$KEEP_KMI" = "true" ] && [ -n "$KMI" ]; then
           if grep -q 'scm_version}"' scripts/setlocalversion; then
             sed -i '$d' scripts/setlocalversion && echo "echo \"$KERNEL_PART.${{ inputs.sublevel }}-$ANDROID_PART-$KMI-$BRAND\"" >> scripts/setlocalversion
+          elif [ "$(tail -n 1 scripts/setlocalversion)" = 'echo "$res"' ]; then
+            # This ACK Makefile prepends KERNELVERSION; setlocalversion emits only its suffix.
+            sed -i '$d' scripts/setlocalversion && echo "echo \"-$ANDROID_PART-$KMI-$BRAND\"" >> scripts/setlocalversion
           else
             sed -i '$d' scripts/setlocalversion && echo "echo \"-$BRAND\"" >> scripts/setlocalversion
           fi

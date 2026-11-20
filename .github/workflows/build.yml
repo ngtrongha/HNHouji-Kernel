@@ -399,7 +399,7 @@ jobs:
           android_version: ${{ inputs.android_version }}
           version: ${{ inputs.version }}
           sublevel: ${{ steps.extract.outputs.sublevel }}
-          brand_name: ${{ inputs.brand_name }}
+          brand_name: ${{ contains(inputs.feature_set, 'Houji') && 'houji' || inputs.brand_name }}
           keep_kmi: ${{ inputs.keep_kmi }}
 
       - name: Remove Protected Exports
@@ -477,6 +477,7 @@ jobs:
         working-directory: ${{ github.workspace }}/AnyKernel3
         run: |
           set -euo pipefail
+          grep -aqF 'Linux version 6.1.138-android14-11-houji ' Image
           grep -qx 'block=boot' anykernel.sh
           sed -i -e 's/^do\.devicecheck=0$/do.devicecheck=1/' -e 's/^device\.name1=$/device.name1=houji/' anykernel.sh
           grep -qx 'do.devicecheck=1' anykernel.sh
