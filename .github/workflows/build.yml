@@ -142,6 +142,7 @@ jobs:
       - name: Download Kernel Repository
         uses: ./.github/actions/download-kernel
         with:
+          houji: ${{ contains(inputs.feature_set, 'Houji') }}
           version: ${{ inputs.version }}
           android_version: ${{ inputs.android_version }}
           kernel_version: ${{ inputs.kernel_version }}
@@ -168,7 +169,7 @@ jobs:
           kernel_version: ${{ inputs.kernel_version }}
           sublevel: ${{ inputs.sublevel }}
           os_patch_level: ${{ inputs.os_patch_level }}
-          variant: ${{ inputs.variant }}
+          variant: ${{ contains(inputs.feature_set, 'Houji') && format('{0}-houji', inputs.variant) || inputs.variant }}
           page_size: ${{ inputs.page_size }}
 
       - name: Kernel Fixes
@@ -339,6 +340,12 @@ jobs:
         with:
           kernel_version: ${{ inputs.kernel_version }}
 
+      - name: Apply GKID tuning for Xiaomi 14
+        if: contains(inputs.feature_set, 'Houji')
+        shell: bash
+        working-directory: ${{ github.workspace }}/kernel/common
+        run: git apply "$GITHUB_WORKSPACE"/.github/patches/houji-6.1.138/*.patch
+
       - name: Apply Performance Patches
         uses: ./.github/actions/performance
         if: contains(inputs.feature_set, 'Perf')
@@ -463,6 +470,17 @@ jobs:
           feature_set: ${{ inputs.feature_set }}
           nomount_commit: ${{ inputs.nomount_commit }}
           susfs_commit: ${{ inputs.susfs_commit }}
+
+      - name: Restrict the Xiaomi 14 installer to houji
+        if: contains(inputs.feature_set, 'Houji')
+        shell: bash
+        working-directory: ${{ github.workspace }}/AnyKernel3
+        run: |
+          set -euo pipefail
+          grep -qx 'block=boot' anykernel.sh
+          sed -i -e 's/^do\.devicecheck=0$/do.devicecheck=1/' -e 's/^device\.name1=$/device.name1=houji/' anykernel.sh
+          grep -qx 'do.devicecheck=1' anykernel.sh
+          test "$(grep -E '^device\.name[0-9]+=.+' anykernel.sh)" = 'device.name1=houji'
 
       - name: Upload Artifacts
         id: kernel-artifact

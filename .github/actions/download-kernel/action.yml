@@ -2,6 +2,9 @@ name: 'Download Kernel Repository'
 description: 'Initialize and sync Android kernel source repository'
 
 inputs:
+  houji:
+    description: 'Use the Xiaomi 14 stock ACK revision for 6.1.138'
+    default: 'false'
   android_version:
     description: 'Android version (e.g., android14)'
     required: true
@@ -46,8 +49,16 @@ runs:
             depth_flag="--depth=${depth}"
           fi
           repo init -u https://android.googlesource.com/kernel/manifest -b common-${FORMATTED_BRANCH} ${depth_flag} || { echo "ERROR: repo init failed" >&2; return 1; }
-          REMOTE_BRANCH=$(git ls-remote https://android.googlesource.com/kernel/common ${FORMATTED_BRANCH}) || { echo "ERROR: git ls-remote failed" >&2; return 1; }
           DEFAULT_MANIFEST_PATH=.repo/manifests/default.xml
+          if [ "${{ inputs.houji }}" = "true" ]; then
+            TAG_FALLBACK=android14-6.1-2025-06_r15
+            mkdir -p .repo/local_manifests || return 1
+            printf '<manifest><extend-project name="kernel/common" path="common" revision="refs/tags/%s"/></manifest>\n' "$TAG_FALLBACK" > .repo/local_manifests/houji.xml || return 1
+            echo "deprecated=false" >> "$GITHUB_OUTPUT"
+            echo "tag_fallback=$TAG_FALLBACK" >> "$GITHUB_OUTPUT"
+            return 0
+          fi
+          REMOTE_BRANCH=$(git ls-remote https://android.googlesource.com/kernel/common ${FORMATTED_BRANCH}) || { echo "ERROR: git ls-remote failed" >&2; return 1; }
           DEPRECATED=false
           if grep -q deprecated <<< "$REMOTE_BRANCH"; then
             sed -i "s/\"${FORMATTED_BRANCH}\"/\"deprecated\/${FORMATTED_BRANCH}\"/g" "$DEFAULT_MANIFEST_PATH"
@@ -215,6 +226,13 @@ runs:
     #   working-directory: ${{ github.workspace }}/kernel
     #   run: |
     #     python "${{ github.workspace }}/.github/actions/download-kernel/fast_parallel_download.py"
+
+    - name: Verify Xiaomi 14 stock ACK
+      if: inputs.houji == 'true'
+      shell: bash
+      working-directory: ${{ github.workspace }}/kernel/common
+      run: |
+        test "$(git rev-parse HEAD)" = "0c3d559bcd85c64dae9c9c9687abbe5347fff3ad"
 
     - name: Capture Kernel Common Commit Metadata
       shell: bash
