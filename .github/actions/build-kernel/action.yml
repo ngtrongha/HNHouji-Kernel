@@ -1,6 +1,9 @@
 name: 'Build Kernel'
 description: 'Builds kernel using legacy build.sh or Bazel (kleaf)'
 inputs:
+  full_lto:
+    description: 'Select FullLTO for the extended houji profile'
+    default: 'false'
   version:
     description: 'Kernel config version (e.g., android14-6.1)'
     required: true
@@ -94,13 +97,16 @@ runs:
         else
           echo "::warning title=build timestamp::$BUILD_CONFIG_FILE not present - Kleaf will stamp the build itself"
         fi
-        PAGE_SIZE_FLAGS=()
+        KLEAF_FLAGS=()
         if [ "${{ inputs.page_size }}" = "16k" ]; then
-          PAGE_SIZE_FLAGS+=(--page_size=16k)
+          KLEAF_FLAGS+=(--page_size=16k)
+        fi
+        if [ "${{ inputs.full_lto }}" = "true" ]; then
+          KLEAF_FLAGS+=(--lto=full)
         fi
         tools/bazel build \
           --config=fast \
-          "${PAGE_SIZE_FLAGS[@]}" \
+          "${KLEAF_FLAGS[@]}" \
           --defconfig_fragment=//common:wild_defconfig.fragment \
           //common:kernel_aarch64
     - name: 'Verify Page Size in Generated .config'

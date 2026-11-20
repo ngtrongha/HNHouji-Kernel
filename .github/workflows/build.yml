@@ -151,6 +151,7 @@ jobs:
       - name: Initialize Config Fragment
         uses: ./.github/actions/initialize-config-fragment
       - name: Spoof /proc/config.gz With Stock Config
+        if: "!contains(inputs.feature_set, 'HoujiGKID')"
         uses: ./.github/actions/stock-config
         with:
           version: ${{ inputs.version }}
@@ -169,7 +170,7 @@ jobs:
           kernel_version: ${{ inputs.kernel_version }}
           sublevel: ${{ inputs.sublevel }}
           os_patch_level: ${{ inputs.os_patch_level }}
-          variant: ${{ contains(inputs.feature_set, 'Houji') && format('{0}-houji', inputs.variant) || inputs.variant }}
+          variant: ${{ contains(inputs.feature_set, 'HoujiGKID') && format('{0}-houji-GKID-FullLTO', inputs.variant) || contains(inputs.feature_set, 'Houji') && format('{0}-houji', inputs.variant) || inputs.variant }}
           page_size: ${{ inputs.page_size }}
 
       - name: Kernel Fixes
@@ -352,6 +353,16 @@ jobs:
         with:
           kernel_version: ${{ inputs.kernel_version }}
 
+      - name: Apply extended GKID tuning for houji
+        if: contains(inputs.feature_set, 'HoujiGKID')
+        shell: bash
+        working-directory: ${{ github.workspace }}/kernel/common
+        run: |
+          set -euo pipefail
+          git apply "$GITHUB_WORKSPACE"/.github/patches/houji-gkid-extended/*.patch
+          python3 "$GITHUB_WORKSPACE/.github/scripts/append_fragment.py" \
+            "$GITHUB_WORKSPACE/.github/fragments/houji-gkid.fragment" --dest wild_defconfig.fragment --label houji-gkid
+
       - name: Setup Misc Configs
         # Gateable now: this is a baseline, not a requirement. Features that do need
         # overlayfs or tmpfs xattr carry those configs in their own fragments.
@@ -437,6 +448,7 @@ jobs:
           KBUILD_BUILD_HOST: build-host
         uses: ./.github/actions/build-kernel
         with:
+          full_lto: ${{ contains(inputs.feature_set, 'HoujiGKID') }}
           version: ${{ inputs.version }}
           page_size: ${{ inputs.page_size }}
 
@@ -453,6 +465,31 @@ jobs:
         uses: ./.github/actions/extract-the-built-config
       - name: Verify the fragment landed in .config
         uses: ./.github/actions/verify-fragment
+
+      - name: Verify houji FullLTO and collect matching zRAM modules
+        if: contains(inputs.feature_set, 'HoujiGKID')
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fxq 'CONFIG_LTO_CLANG_FULL=y' built.config
+          if grep -Fxq 'CONFIG_BBG=y' built.config; then
+            lsm=$(sed -n 's/^CONFIG_LSM="\(.*\)"/\1/p' built.config)
+            [[ ",$lsm," == *,selinux,* && ",$lsm," == *,baseband_guard,* ]]
+          fi
+          mkdir -p houji-zram-modules
+          for name in zram.ko zsmalloc.ko; do
+            module=$(find -L kernel/bazel-bin/common/kernel_aarch64 -type f -name "$name" -print -quit)
+            test -s "$module"
+            cp "$module" houji-zram-modules/
+          done
+
+      - name: Upload houji zRAM modules for ROM integration
+        if: contains(inputs.feature_set, 'HoujiGKID')
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.extract.outputs.file_name }}-zram-modules
+          path: houji-zram-modules/*.ko
+          if-no-files-found: error
 
       - name: Consolidated Build Summary
         id: build-summary

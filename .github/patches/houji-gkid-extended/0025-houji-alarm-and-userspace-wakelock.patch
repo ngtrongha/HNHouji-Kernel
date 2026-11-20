@@ -1,0 +1,23 @@
+--- a/kernel/time/alarmtimer.c
++++ b/kernel/time/alarmtimer.c
+@@ -281,7 +281,7 @@
+ 		return 0;
+ 
+ 	if (ktime_to_ns(min) < 2 * NSEC_PER_SEC) {
+-		pm_wakeup_event(dev, 2 * MSEC_PER_SEC);
++		pm_wakeup_event(dev, max_t(s64, 1, ktime_to_ms(min) + 1));
+ 		return -EBUSY;
+ 	}
+ 
+--- a/kernel/power/wakelock.c
++++ b/kernel/power/wakelock.c
+@@ -233,7 +233,8 @@
+ 		goto out;
+ 	}
+ 	if (timeout_ns) {
+-		u64 timeout_ms = timeout_ns + NSEC_PER_MSEC - 1;
++		u64 timeout_ms = min_t(u64, timeout_ns, 500 * NSEC_PER_MSEC)
++				 + NSEC_PER_MSEC - 1;
+ 
+ 		do_div(timeout_ms, NSEC_PER_MSEC);
+ 		__pm_wakeup_event(wl->ws, timeout_ms);

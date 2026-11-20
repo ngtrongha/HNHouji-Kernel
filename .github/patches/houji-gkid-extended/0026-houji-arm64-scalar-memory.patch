@@ -1,0 +1,44 @@
+--- a/arch/arm64/lib/memcpy.S
++++ b/arch/arm64/lib/memcpy.S
+@@ -149,6 +149,7 @@
+ 	cbz	tmp1, L(copy0)
+ 	cmp	tmp1, count
+ 	b.lo	L(copy_long_backwards)
++	prfm	pldl1strm, [src, #128]
+ 
+ 	/* Copy 16 bytes and then align dst to 16-byte alignment.  */
+ 
+--- a/arch/arm64/lib/memset.S
++++ b/arch/arm64/lib/memset.S
+@@ -53,7 +53,10 @@
+ 	b.hi	.Lover16_proc
+ 	/*All store maybe are non-aligned..*/
+ 	tbz	count, #3, 1f
+-	str	A_l, [dst], #8
++	add	tmp1, dst, count
++	str	A_l, [dst]
++	str	A_l, [tmp1, #-8]
++	ret
+ 1:
+ 	tbz	count, #2, 2f
+ 	str	A_lw, [dst], #4
+--- a/arch/arm64/lib/memcmp.S
++++ b/arch/arm64/lib/memcmp.S
+@@ -118,11 +118,14 @@
+ L(less8):
+ 	adds	limit, limit, 4
+ 	b.lo	L(less4)
+-	ldr	data1w, [src1], 4
+-	ldr	data2w, [src2], 4
++	ldr	data1w, [src1]
++	ldr	data2w, [src2]
+ 	cmp	data1w, data2w
+ 	b.ne	L(return)
+-	sub	limit, limit, 4
++	cbz	limit, L(ret_eq)
++	ldr	data1w, [src1, limit]
++	ldr	data2w, [src2, limit]
++	b	L(return)
+ L(less4):
+ 	adds	limit, limit, 4
+ 	beq	L(ret_eq)

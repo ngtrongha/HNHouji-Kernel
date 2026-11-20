@@ -118,7 +118,7 @@ on:
         type: boolean
         default: true
       use_perf:
-        description: "Performance"
+        description: "Performance (houji: extended GKID settings and FullLTO)"
         type: boolean
         default: false
       use_misc:
@@ -576,7 +576,11 @@ jobs:
           [ "$F_PTRACE" = "true" ] && FEATURES="${FEATURES}Ptrace+"
           [ "$F_UNICODE" = "true" ] && FEATURES="${FEATURES}Unicode+"
           if [ "${{ inputs.kernel_build_version }}" = "houji-6.1.138" ]; then
-            FEATURES="${FEATURES}Houji+"
+            if [ "$F_PERF" = "true" ]; then
+              FEATURES="${FEATURES}HoujiGKID+"
+            else
+              FEATURES="${FEATURES}Houji+"
+            fi
           elif [ "$F_PERF" = "true" ]; then
             FEATURES="${FEATURES}Perf+"
           fi
