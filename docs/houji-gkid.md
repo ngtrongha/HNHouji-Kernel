@@ -2,19 +2,19 @@
 
 Trong **Build Kernels**, chọn **Kernel Version → houji-6.1.138** và **Page Size → 4k**. Target này dùng mã nguồn ACK `0c3d559bcd85` của HyperOS `OS3.0.307.0.WNCCNXM`. Với ROM khác, cần đối chiếu kernel stock và module vendor trước khi dùng.
 
-## BakaSU và FullLTO
+## BakaSU và ThinLTO
 
-Để dựng cấu hình mở rộng, chọn **Performance**, **BakaSU**, **Commit mode → latest**, **Networking** và **Baseband Guard**. Lần CI cho cấu hình này dùng patch date `2025-06` và tắt các tính năng bổ sung khác. Mỗi lần dispatch ở chế độ latest, workflow phân giải nhánh BakaSU `main` thành SHA để checkout. Tên artifact chứa `BakaSU-houji-GKID-FullLTO`.
+Để dựng cấu hình mở rộng, chọn **Performance**, **BakaSU**, **Commit mode → latest**, **Networking** và **Baseband Guard**. Lần CI cho cấu hình này dùng patch date `2025-06` và tắt các tính năng bổ sung khác. Mỗi lần dispatch ở chế độ latest, workflow phân giải nhánh BakaSU `main` thành SHA để checkout. Tên artifact chứa `BakaSU-houji-GKID-ThinLTO`.
 
 | Nhóm | Thay đổi của bản mở rộng |
 | --- | --- |
-| CPU và I/O | FullLTO, timer 300 Hz, governor mặc định schedutil. Ondemand và mq-deadline được biên dịch để HyperOS có thể chọn theo policy hoặc hàng đợi. |
+| CPU và I/O | ThinLTO, timer 300 Hz, governor mặc định schedutil. Ondemand và mq-deadline được biên dịch để HyperOS có thể chọn theo policy hoặc hàng đợi. |
 | RAM | MGLRU, zRAM dạng module với mặc định LZ4 và hỗ trợ writeback. ZIP AnyKernel3 chỉ cài Image. Cặp `zram.ko` và `zsmalloc.ko` cùng bản build có artifact riêng cho người tích hợp ROM. Module đang nạp, thuật toán nén và thiết bị backing trên điện thoại phụ thuộc system_dlkm và cấu hình khởi động của ROM. |
 | Filesystem | Giảm khoảng nghỉ GC **khẩn cấp** của F2FS xuống 50 ms. JBD2 dùng mặc định commit journal 30 giây cho ext4; mount option có thể ghi đè. Khoảng commit dài làm tăng cửa sổ thay đổi chưa bền vững khi mất nguồn. |
 | Bộ nhớ ARM64 | Giữ ba patch nền bên dưới và dùng mã scalar cho ba hàm thư viện. Prefetch nguồn cho memcpy dài theo chiều tiến, hai store chồng lấn cho memset 8–15 byte, so sánh đầu/cuối bằng tải 32 bit cho memcmp 4–7 byte. |
 | Nguồn điện | Freezer mặc định 1 giây. Alarm sắp hết hạn giữ thức đến thời điểm báo cộng 1 ms, có chặn dưới 1 ms cho alarm đã trễ. Giới hạn 500 ms áp dụng cho yêu cầu **có thời hạn** đi qua giao diện userspace `/sys/power/wake_lock`. Wakelock của driver và khóa vô thời hạn vẫn theo vòng đời của bên sở hữu. |
 | Mạng | Networking cung cấp IP Set, Netfilter, NAT IPv4/IPv6, IPsec/ESP, BBR và Westwood. BBR là TCP mặc định khi biên dịch, FQ-CoDel là qdisc mặc định. Android có thể đổi chúng khi chạy. |
-| Quyền và bảo vệ | BakaSU cung cấp root. SELinux và Baseband Guard được bật khi chọn BBG. Workflow kiểm tra danh sách LSM, ABI, FullLTO và phiên bản thật trong Image trước khi đóng gói. Trạng thái SELinux enforcing trên thiết bị phụ thuộc boot và policy của ROM. |
+| Quyền và bảo vệ | BakaSU cung cấp root. SELinux và Baseband Guard được bật khi chọn BBG. Workflow kiểm tra danh sách LSM, ABI, ThinLTO và phiên bản thật trong Image trước khi đóng gói. Trạng thái SELinux enforcing trên thiết bị phụ thuộc boot và policy của ROM. |
 
 ## Bản nền ba patch
 

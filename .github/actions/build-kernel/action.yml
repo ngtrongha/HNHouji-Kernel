@@ -1,8 +1,8 @@
 name: 'Build Kernel'
 description: 'Builds kernel using legacy build.sh or Bazel (kleaf)'
 inputs:
-  full_lto:
-    description: 'Select FullLTO for the extended houji profile'
+  thin_lto:
+    description: 'Select ThinLTO for the extended houji profile'
     default: 'false'
   version:
     description: 'Kernel config version (e.g., android14-6.1)'
@@ -101,8 +101,8 @@ runs:
         if [ "${{ inputs.page_size }}" = "16k" ]; then
           KLEAF_FLAGS+=(--page_size=16k)
         fi
-        if [ "${{ inputs.full_lto }}" = "true" ]; then
-          KLEAF_FLAGS+=(--lto=full)
+        if [ "${{ inputs.thin_lto }}" = "true" ]; then
+          KLEAF_FLAGS+=(--lto=thin)
         fi
         tools/bazel build \
           --config=fast \

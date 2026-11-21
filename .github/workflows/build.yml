@@ -170,7 +170,7 @@ jobs:
           kernel_version: ${{ inputs.kernel_version }}
           sublevel: ${{ inputs.sublevel }}
           os_patch_level: ${{ inputs.os_patch_level }}
-          variant: ${{ contains(inputs.feature_set, 'HoujiGKID') && format('{0}-houji-GKID-FullLTO', inputs.variant) || contains(inputs.feature_set, 'Houji') && format('{0}-houji', inputs.variant) || inputs.variant }}
+          variant: ${{ contains(inputs.feature_set, 'HoujiGKID') && format('{0}-houji-GKID-ThinLTO', inputs.variant) || contains(inputs.feature_set, 'Houji') && format('{0}-houji', inputs.variant) || inputs.variant }}
           page_size: ${{ inputs.page_size }}
 
       - name: Kernel Fixes
@@ -448,7 +448,7 @@ jobs:
           KBUILD_BUILD_HOST: build-host
         uses: ./.github/actions/build-kernel
         with:
-          full_lto: ${{ contains(inputs.feature_set, 'HoujiGKID') }}
+          thin_lto: ${{ contains(inputs.feature_set, 'HoujiGKID') }}
           version: ${{ inputs.version }}
           page_size: ${{ inputs.page_size }}
 
@@ -466,12 +466,12 @@ jobs:
       - name: Verify the fragment landed in .config
         uses: ./.github/actions/verify-fragment
 
-      - name: Verify houji FullLTO and collect matching zRAM modules
+      - name: Verify houji ThinLTO and collect matching zRAM modules
         if: contains(inputs.feature_set, 'HoujiGKID')
         shell: bash
         run: |
           set -euo pipefail
-          grep -Fxq 'CONFIG_LTO_CLANG_FULL=y' built.config
+          grep -Fxq 'CONFIG_LTO_CLANG_THIN=y' built.config
           if grep -Fxq 'CONFIG_BBG=y' built.config; then
             lsm=$(sed -n 's/^CONFIG_LSM="\(.*\)"/\1/p' built.config)
             [[ ",$lsm," == *,selinux,* && ",$lsm," == *,baseband_guard,* ]]

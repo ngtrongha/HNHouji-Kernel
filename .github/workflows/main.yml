@@ -118,7 +118,7 @@ on:
         type: boolean
         default: true
       use_perf:
-        description: "Performance (houji: extended GKID settings and FullLTO)"
+        description: "Performance (houji: extended GKID settings and ThinLTO)"
         type: boolean
         default: false
       use_misc:
